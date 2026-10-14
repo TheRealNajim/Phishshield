@@ -1,0 +1,7 @@
+.ev-badge { font: 13px/1.4 system-ui, sans-serif; margin: 8px 0; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.ev-badge ul { display: none; margin: 6px 0 0 18px; padding: 0; }
+.ev-badge.ev-open ul { display: block; }
+.ev-score { margin-left: 8px; opacity: .7; }
+.ev-ok { background: #e6f4ea; color: #137333; border: 1px solid #a8dab5; }
+.ev-warn { background: #fef7e0; color: #8a5a00; border: 1px solid #fdd663; }
+.ev-bad { background: #fce8e6; color: #a50e0e; border: 1px solid #f6aea9; }

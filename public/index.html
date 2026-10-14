@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PhishShield — AI Sandbox Threat Analyzer</title>
+<style>
+:root{
+  --bg:#070b14; --panel:rgba(255,255,255,.045); --line:rgba(255,255,255,.09);
+  --txt:#e8eefc; --mut:#93a0bb; --acc:#6e8bff; --acc2:#22d3ee;
+  --ok:#34d399; --warn:#fbbf24; --bad:#fb7185;
+  --r:18px; --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);color:var(--txt);background:var(--bg);min-height:100vh;overflow-x:hidden}
+.bg{position:fixed;inset:0;z-index:0;background:
+  radial-gradient(700px 380px at 15% -5%,rgba(110,139,255,.28),transparent 60%),
+  radial-gradient(700px 420px at 90% 10%,rgba(34,211,238,.16),transparent 60%),
+  radial-gradient(900px 600px at 50% 110%,rgba(251,113,133,.12),transparent 60%),var(--bg)}
+#bg3d{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.85}
+#vig{position:fixed;inset:0;z-index:2;pointer-events:none;background:radial-gradient(120% 90% at 50% 20%,transparent 55%,rgba(2,5,12,.55))}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 20px 80px;position:relative;z-index:3}
+/* header */
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}
+.logo{display:flex;align-items:center;gap:12px;font-weight:800;font-size:19px;letter-spacing:.2px}
+.shield{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:21px;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 30px rgba(110,139,255,.45)}
+.pill{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:7px 13px;background:var(--panel);display:flex;gap:8px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.35}}
+/* hero */
+.hero{text-align:center;margin:10px 0 26px}
+.hero h1{font-size:clamp(30px,5vw,52px);margin:0;line-height:1.05;letter-spacing:-1.5px}
+.hero h1 span{background:linear-gradient(90deg,var(--acc),var(--acc2),var(--ok));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{color:var(--mut);max-width:640px;margin:12px auto 0;font-size:15.5px;line-height:1.6}
+.stats{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap}
+.stat{font-size:12.5px;color:var(--mut);border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 14px}
+.stat b{color:var(--txt)}
+/* layout */
+.grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;backdrop-filter:blur(14px);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.card h3{margin:0 0 4px;font-size:14px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut)}
+.tabs{display:flex;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:12px;padding:4px;margin:12px 0 16px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--mut);font-weight:700;font-size:14px;padding:10px;border-radius:9px;cursor:pointer;transition:.2s}
+.tabs button.on{background:linear-gradient(135deg,rgba(110,139,255,.35),rgba(34,211,238,.25));color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.drop{border:1.5px dashed rgba(110,139,255,.5);border-radius:14px;padding:34px 16px;text-align:center;cursor:pointer;transition:.2s;background:rgba(110,139,255,.05)}
+.drop:hover,.drop.over{border-color:var(--acc2);background:rgba(34,211,238,.08);transform:scale(1.01)}
+.drop .big{font-size:30px}
+.drop p{margin:8px 0 0;color:var(--mut);font-size:13.5px}
+.drop b{color:var(--txt)}
+textarea{width:100%;min-height:170px;resize:vertical;background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:12px;color:var(--txt);padding:13px;font-family:var(--mono);font-size:12.5px;line-height:1.6;outline:none}
+textarea:focus{border-color:var(--acc)}
+.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn{border:0;border-radius:11px;padding:12px 18px;font-weight:800;font-size:14px;cursor:pointer;color:#fff;background:linear-gradient(135deg,var(--acc),#8b5cf6);box-shadow:0 10px 26px rgba(110,139,255,.4);transition:.15s;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{transform:translateY(-1px);filter:brightness(1.1)}
+.btn:disabled{opacity:.6;cursor:wait;transform:none}
+.ghost{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--txt);box-shadow:none;font-weight:600;font-size:13px;padding:9px 14px;border-radius:10px;cursor:pointer}
+.ghost:hover{background:rgba(255,255,255,.11)}
+.feed{font-family:var(--mono);font-size:12px;color:var(--acc2);min-height:22px;margin-top:12px}
+/* verdict */
+.verdict-top{display:flex;gap:16px;align-items:center;margin:6px 0 14px}
+.ring{width:86px;height:86px;flex:none}
+.vbadge{font-size:21px;font-weight:900;letter-spacing:-.5px}
+.vsub{color:var(--mut);font-size:12.5px;margin-top:4px;font-family:var(--mono)}
+.Verified{color:var(--ok);text-shadow:0 0 24px rgba(52,211,153,.5)}
+.Suspicious{color:var(--warn);text-shadow:0 0 24px rgba(251,191,36,.5)}
+.Malicious{color:var(--bad);text-shadow:0 0 24px rgba(251,113,133,.55)}
+.idle{color:var(--mut)}
+.reasons{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto}
+.reasons li{background:rgba(0,0,0,.32);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:10px;padding:9px 12px;font-size:13px;line-height:1.5}
+.reasons li.bad{border-left-color:var(--bad)}
+.reasons li.good{border-left-color:var(--ok)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chip{font-family:var(--mono);font-size:11px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);color:#a5f3fc;border-radius:7px;padding:4px 9px;word-break:break-all}
+.sha{font-family:var(--mono);font-size:11px;color:var(--mut);margin-top:10px;word-break:break-all}
+/* terminal */
+.term{margin-top:14px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.term-bar{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.55);padding:9px 12px}
+.term-bar i{width:11px;height:11px;border-radius:50%;display:block}
+.term-bar span{margin-left:8px;font-family:var(--mono);font-size:11px;color:var(--mut)}
+.term-bar button{margin-left:auto}
+.term pre{margin:0;background:#04070f;color:#c9f7ff;padding:14px;font-family:var(--mono);font-size:11.5px;line-height:1.65;max-height:260px;overflow:auto;white-space:pre-wrap}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.foot{text-align:center;color:var(--mut);font-size:12px;margin-top:26px}
+.foot a{color:var(--acc2);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<canvas id="bg3d" aria-hidden="true"></canvas>
+<div id="vig" aria-hidden="true"></div>
+<div class="wrap">
+  <div class="nav">
+    <div class="logo"><div class="shield">🛡️</div>PhishShield</div>
+    <div class="pill"><span class="dot"></span><span id="mode">sandbox · connecting…</span></div>
+  </div>
+
+  <div class="hero">
+    <h1>Drop the sketch.<br><span>Get a verdict in seconds.</span></h1>
+    <p>An AI agent writes its own Python inside an isolated CreateOS micro-VM — zero egress, static-only — then returns <b>Verified / Suspicious / Malicious</b> in plain English. No signup. Nothing executes.</p>
+    <div class="stats">
+      <div class="stat"><b id="scans">0</b> scans this session</div>
+      <div class="stat">egress <b>blocked</b></div>
+      <div class="stat">binaries <b>never executed</b></div>
+      <div class="stat" id="teamsStat" style="cursor:pointer" onclick="upgrade()" title="Unlimited scans for staff inboxes">Teams <b>$19/mo →</b></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>⬆ Input</h3>
+      <div class="tabs">
+        <button id="tFile" class="on" onclick="tab('file')">📁 Suspicious file</button>
+        <button id="tMail" onclick="tab('mail')">✉️ Bank email</button>
+      </div>
+      <div id="paneFile">
+        <div class="drop" id="drop" onclick="document.getElementById('f').click()">
+          <div class="big">📦</div>
+          <p><b id="fname">Drop a .pdf / .docx / .exe here</b> or click to browse<br>8 MB max · hashed + string-scanned, never run</p>
+          <input type="file" id="f" hidden>
+        </div>
+      </div>
+      <div id="paneMail" style="display:none">
+        <textarea id="em" placeholder="Paste full email WITH headers (From:, Authentication-Results:, body)…"></textarea>
+        <div class="row">
+          <button class="ghost" onclick="loadSample('clean')">✨ clean</button>
+          <button class="ghost" onclick="loadSample('phishing')">🎣 phishing</button>
+          <button class="ghost" onclick="loadSample('borderline')" title="Passes auth but hides a punycode link — splits standard vs strict">🌗 borderline</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn" id="go" onclick="go(false)">▶ Analyze in sandbox</button>
+        <button class="ghost" id="goDeep" onclick="go(true)" title="Runs standard + strict analyzers in two parallel sandboxes">🧬 Deep scan ×2</button>
+      </div>
+      <div class="feed" id="feed"></div>
+    </div>
+
+    <div class="card">
+      <h3>⚡ Verdict</h3>
+      <div class="verdict-top">
+        <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/><circle id="arc" cx="50" cy="50" r="42" fill="none" stroke="#6e8bff" stroke-width="10" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" transform="rotate(-90 50 50)" style="transition:stroke-dashoffset 1s,stroke .4s"/></svg>
+        <div><div class="vbadge idle" id="v">Awaiting scan</div><div class="vsub" id="vs">drop a file or paste an email →</div></div>
+      </div>
+      <ul class="reasons" id="r"><li class="good">No scan yet. Try the 🎣 phishing sample to see a Malicious verdict with full reasoning.</li></ul>
+      <div class="chips" id="chips"></div>
+      <div class="sha" id="sha"></div>
+      <div class="row" id="shareRow" style="display:none;margin-top:10px">
+        <button class="ghost" onclick="copyShare()">🔗 copy share link</button>
+        <button class="ghost" onclick="copyMD()">📋 copy report (.md)</button>
+        <a class="ghost" id="openShare" href="#" target="_blank" style="text-decoration:none">open report →</a>
+      </div>
+      <div class="chips" id="runs" style="margin-top:10px"></div>
+      <div class="term">
+        <div class="term-bar"><i style="background:#fb7185"></i><i style="background:#fbbf24"></i><i style="background:#34d399"></i><span>agent@micro-vm:/tmp/scan.py</span><button class="ghost" onclick="copyCode()">copy</button></div>
+        <pre id="c">// the Python the agent wrote + ran will appear here…</pre>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>🕘 Recent scans</h3>
+    <ul class="reasons" id="hist"><li class="good">Loading…</li></ul>
+  </div>
+  <div class="foot">Built for CreateOS × Stripe Projects hackathon · static analysis only · <a href="/api/health">api health</a> · <a href="/api/billing">teams billing</a></div>
+</div>
+
+<script>
+let scans = 0, lastCode = '';
+const $ = id => document.getElementById(id);
+function tab(w){
+  $('tFile').classList.toggle('on', w==='file');
+  $('tMail').classList.toggle('on', w==='mail');
+  $('paneFile').style.display = w==='file' ? '' : 'none';
+  $('paneMail').style.display = w==='mail' ? '' : 'none';
+}
+const drop = $('drop');
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',ev=>{ if(ev.dataTransfer.files[0]){ $('f').files = ev.dataTransfer.files; pick(); }});
+$('f').addEventListener('change', pick);
+function pick(){ const f=$('f').files[0]; if(f) $('fname').textContent = '📄 '+f.name; }
+async function loadSample(which){ tab('mail'); try{ $('em').value = await (await fetch('/samples/' + which + '.eml')).text(); }catch{ alert('sample failed to load'); } }
+async function upgrade(){
+  try{
+    const b = await (await fetch('/api/billing')).json();
+    if (b.teams && b.teams.checkout) location.href = '/api/billing/checkout';
+    else alert('Teams checkout goes live at the hackathon: set STRIPE_PAYMENT_LINK to a $19/mo Payment Link. Free tier: 30 scans/hour.');
+  }catch{ alert('billing unavailable'); }
+}
+function copyCode(){ navigator.clipboard.writeText(lastCode||''); }
+fetch('/api/health').then(r=>r.json()).then(j=>{ $('mode').textContent = 'sandbox · '+(j.mock?'mock (local)':'live micro-VM'); }).catch(()=>{ $('mode').textContent='sandbox · offline?'; });
+const steps=['⚙️ spinning up Firecracker micro-VM…','✍️ agent writing /tmp/scan.py…','🔒 egress blocked · running static scan…','📖 parsing verdict…'];
+const stepsDeep=['⚙️ spinning up 2 Firecracker micro-VMs…','✍️ agent writing standard + strict scan.py…','🔒 egress blocked on both · scanning in parallel…','⚖️ comparing verdicts…'];
+let lastId = null, lastResult = null;
+function copyShare(){ if(lastId) navigator.clipboard.writeText(location.origin + '/v/' + lastId); }
+function copyMD(){
+  if(!lastResult) return;
+  const j = lastResult;
+  const md = `# PhishShield verdict: ${j.verdict} (${j.score})\n\n` +
+    `- File: ${j.filename || (j.kind || 'scan')}\n- Kind: ${j.kind} · ${j.mode}\n- SHA256: ${j.iocs.sha256}\n` +
+    (j.runs ? `- Deep scan: ${j.runs.map(r=>r.profile+': '+r.verdict+' ('+r.score+')').join(' vs ')}\n` : '') +
+    `\n## Reasons\n${j.reasons.map(r=>`- ${r}`).join('\n')}\n` +
+    `\n## Domains\n${(j.iocs.domains||[]).map(d=>`- ${d}`).join('\n') || '(none)'}\n` +
+    (lastId ? `\nFull report: ${location.origin}/v/${lastId}\n` : '');
+  navigator.clipboard.writeText(md);
+}
+async function go(deep){
+  const isMail = $('paneMail').style.display !== 'none';
+  const btn = $('go'), btn2 = $('goDeep'), feed = $('feed');
+  const seq = deep ? stepsDeep : steps;
+  btn.disabled = true; btn2.disabled = true; btn.innerHTML = '<span class="spin"></span> Scanning…';
+  let i=0; feed.textContent = seq[0];
+  const tick = setInterval(()=>{ i=(i+1)%seq.length; feed.textContent = seq[i]; }, 700);
+  try{
+    let res;
+    const url = deep ? '/api/analyze/deep' : '/api/analyze';
+    if(isMail){
+      const t=$('em').value.trim(); if(!t){alert('Paste an email first (or load a sample)');throw 0;}
+      res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emailText:t})});
+    } else {
+      const f=$('f').files[0]; if(!f){alert('Pick a file first');throw 0;}
+      const fd=new FormData(); fd.append('file',f);
+      res = await fetch(url,{method:'POST',body:fd});
+    }
+    render(await res.json());
+    scans++; $('scans').textContent = scans;
+    loadHist();
+    feed.textContent = deep ? '✅ done · both VMs destroyed' : '✅ done · VM destroyed';
+  }catch(e){ if(e!==0) feed.textContent='❌ scan failed — is the server running?'; }
+  clearInterval(tick); btn.disabled=false; btn2.disabled=false; btn.textContent='▶ Analyze in sandbox';
+}
+function render(j){
+  if(j.error){ $('v').textContent='Error'; return; }
+  lastResult = { ...j, filename: ($('f').files[0] && $('f').files[0].name) || j.filename || 'pasted email' };
+  const v=$('v'); v.textContent=j.verdict+' · '+j.score; v.className='vbadge '+j.verdict;
+  $('vs').textContent=(j.kind||'?')+' · '+(j.mode||'');
+  const arc=$('arc'), C=264, off=C-(Math.min(j.score,100)/100)*C;
+  arc.style.strokeDashoffset=off;
+  arc.style.stroke = j.verdict==='Verified' ? '#34d399' : j.verdict==='Suspicious' ? '#fbbf24' : '#fb7185';
+  $('r').innerHTML = j.reasons.map(x=>`<li class="${/fail|lookalike|non-bank|macro|JavaScript|EXE|credential|shortened|punycode|mismatch/i.test(x)?'bad':'good'}">${x}</li>`).join('');
+  $('chips').innerHTML = (j.iocs.domains||[]).map(d=>`<span class="chip">${d}</span>`).join('');
+  $('sha').textContent = 'sha256 '+j.iocs.sha256+' · '+j.size+' bytes';
+  lastCode = j.agent_code||''; $('c').textContent = lastCode.slice(0,6000);
+  lastId = j.id || null;
+  if (lastId) { $('shareRow').style.display = ''; $('openShare').href = '/v/' + lastId; }
+  else $('shareRow').style.display = 'none';
+  $('runs').innerHTML = j.runs ? j.runs.map(r=>`<span class="chip">${r.profile}: ${r.verdict} (${r.score})</span>`).join('') + (j.agreement ? '<span class="chip">✓ runs agree</span>' : '<span class="chip">⚠ runs disagree — took harsher</span>') : '';
+}
+async function loadHist(){
+  try{
+    const h = await (await fetch('/api/analyze/history')).json();
+    $('hist').innerHTML = h.length ? h.map(x=>`<li class="${x.verdict==='Verified'?'good':'bad'}"><b>${x.verdict}</b> (${x.score}) · ${(x.filename||'').slice(0,40)} · <span style="color:var(--mut)">${x.kind||''} · ${x.t||''}</span> <a href="/v/${x.id}" target="_blank" style="color:var(--acc2)">report →</a> <a href="#" onclick="delReport('${x.id}');return false" style="color:var(--mut)" title="delete this report">✕</a></li>`).join('') : '<li class="good">No scans logged yet. Reports store verdicts + hashes only — never file contents.</li>';
+  }catch{ $('hist').innerHTML = '<li class="good">History unavailable.</li>'; }
+}
+async function delReport(id){ await fetch('/api/analyze/report/' + encodeURIComponent(id), {method:'DELETE'}); loadHist(); }
+loadHist();
+
+/* Signal-particle background — original engine in the style of ThreeUI's
+   "Signal Particles": a dark drifting particle field with soft connective
+   pulses. Zero dependencies, pointer-reactive, reduced-motion aware. */
+(function(){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cv = document.getElementById('bg3d'), ctx = cv.getContext('2d');
+  let W, H, P = [], mouse = {x:-9e3, y:-9e3}, pulse = null;
+  const DPR = Math.min(devicePixelRatio || 1, 1.5);
+  const COLORS = ['110,139,255','34,211,238','139,92,246'];
+  function size(){
+    W = innerWidth; H = innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    cv.style.width = W+'px'; cv.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    const n = Math.min(420, Math.max(140, (W*H/9000)|0));
+    P = Array.from({length:n}, () => ({
+      x: Math.random()*W, y: Math.random()*H,
+      vx: (Math.random()-.5)*.28, vy: (Math.random()-.5)*.28,
+      r: Math.random()*1.6+.6, c: COLORS[(Math.random()*3)|0],
+      tw: Math.random()*Math.PI*2
+    }));
+  }
+  size(); addEventListener('resize', size);
+  addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; }, {passive:true});
+  document.addEventListener('visibilitychange', () => { running = !document.hidden; if (running) requestAnimationFrame(frame); });
+  // traveling pulse: a bright wavefront that sweeps the field every ~7s
+  setInterval(() => { pulse = {x: Math.random()*W, y: Math.random()*H, r: 0}; }, 7000);
+  let running = true;
+  const LINK = 130;
+  function frame(){
+    if (!running) return;
+    ctx.clearRect(0,0,W,H);
+    if (pulse) { pulse.r += 7; if (pulse.r > Math.max(W,H)) pulse = null; }
+    ctx.globalCompositeOperation = 'lighter';
+    // links
+    ctx.lineWidth = 1;
+    for (let i=0;i<P.length;i++){
+      const a = P[i];
+      for (let j=i+1;j<P.length;j++){
+        const b = P[j], dx = a.x-b.x, dy = a.y-b.y, d2 = dx*dx+dy*dy;
+        if (d2 > LINK*LINK) continue;
+        const d = Math.sqrt(d2), alpha = (1-d/LINK)*.16;
+        let boost = 0;
+        if (pulse) { const ring = Math.abs(Math.hypot((a.x+b.x)/2-pulse.x,(a.y+b.y)/2-pulse.y) - pulse.r); if (ring < 60) boost = (1-ring/60)*.5; }
+        ctx.strokeStyle = `rgba(110,139,255,${(alpha+boost).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      }
+    }
+    // particles
+    for (const p of P){
+      p.tw += .03;
+      p.x += p.vx; p.y += p.vy;
+      const dx = p.x-mouse.x, dy = p.y-mouse.y, md = Math.hypot(dx,dy);
+      if (md < 140 && md > 1) { p.x += dx/md*.6; p.y += dy/md*.6; }
+      if (p.x < -20) p.x = W+20; if (p.x > W+20) p.x = -20;
+      if (p.y < -20) p.y = H+20; if (p.y > H+20) p.y = -20;
+      const glow = .35 + Math.sin(p.tw)*.2;
+      const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*4);
+      g.addColorStop(0, `rgba(${p.c},${glow+.3})`);
+      g.addColorStop(1, `rgba(${p.c},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r*4,0,7); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

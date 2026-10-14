@@ -1,0 +1,13 @@
+From: Chase Alerts <alerts@chase.com>
+To: customer@example.com
+Subject: A note about your account
+Authentication-Results: mx.example.com; spf=pass; dkim=pass; dmarc=pass
+Date: Tue, 13 Oct 2026 09:00:00 -0700
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<p>Hello,</p>
+<p>Please review your account here:</p>
+<p><a href="https://xn--chse-9na.com/login">https://chase.com/login</a></p>
+<p>Thank you.</p>
+</body></html>

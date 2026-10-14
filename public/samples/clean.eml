@@ -1,0 +1,13 @@
+From: Chase Alerts <alerts@chase.com>
+To: customer@example.com
+Subject: Your monthly statement is ready
+Authentication-Results: mx.example.com; spf=pass; dkim=pass; dmarc=pass
+Date: Tue, 13 Oct 2026 09:00:00 -0700
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<p>Hello,</p>
+<p>Your monthly statement is ready. Sign in to review it:</p>
+<p><a href="https://chase.com/statements">https://chase.com/statements</a></p>
+<p>Thanks,<br>Chase</p>
+</body></html>

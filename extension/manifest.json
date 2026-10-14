@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "PhishShield for Gmail",
+  "version": "0.2.0",
+  "description": "Marks Gmail messages Verified, Suspicious or Malicious via your PhishShield sandbox backend.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "content_scripts": [{
+    "matches": ["https://mail.google.com/*"],
+    "js": ["content.js"],
+    "css": ["badge.css"],
+    "run_at": "document_idle"
+  }]
+}

@@ -1,0 +1,10 @@
+# secrets + local state (never commit)
+.env
+data/
+# deps + logs
+node_modules/
+npm-debug.log*
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

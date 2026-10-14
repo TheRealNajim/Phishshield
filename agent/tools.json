@@ -1,0 +1,27 @@
+[
+  {
+    "name": "sandbox_create",
+    "description": "Create isolated CreateOS micro-VM with zero egress",
+    "args": { "template": "python:1", "shape": "s-1vcpu-1gb" }
+  },
+  {
+    "name": "sandbox_upload",
+    "description": "Upload untrusted file into sandbox /tmp/target (never runs it)",
+    "args": { "sandboxId": "sb-xxx", "remotePath": "/tmp/target" }
+  },
+  {
+    "name": "sandbox_write",
+    "description": "Agent writes its own analyzer to /tmp/scan.py",
+    "args": { "sandboxId": "sb-xxx", "path": "/tmp/scan.py", "code": "string (python)" }
+  },
+  {
+    "name": "sandbox_run",
+    "description": "Run agent code, capture stdout JSON",
+    "args": { "sandboxId": "sb-xxx", "cmd": "python3", "argv": ["/tmp/scan.py", "/tmp/target"] }
+  },
+  {
+    "name": "sandbox_destroy",
+    "description": "Tear down VM after verdict",
+    "args": { "sandboxId": "sb-xxx" }
+  }
+]
