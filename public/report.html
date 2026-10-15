@@ -3,9 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PhishShield verdict — shared scan report</title>
-<meta property="og:title" content="PhishShield — shared threat verdict">
+<title>DeceptIQ verdict — shared scan report</title>
+<meta name="description" content="An AI agent wrote its own Python in an isolated sandbox and returned a plain-English phishing verdict. Open the DeceptIQ report.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#001b1b">
+<meta name="color-scheme" content="dark light">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DeceptIQ">
+<meta property="og:title" content="DeceptIQ — shared threat verdict">
 <meta property="og:description" content="An AI agent wrote its own Python in an isolated sandbox and returned a plain-English verdict. Open the report.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DeceptIQ — shared threat verdict">
+<meta name="twitter:description" content="Sandboxed AI phishing verdict with reasons, indicators and the exact analysis code.">
 <style>
 :root{--bg:#070b14;--panel:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--txt:#e8eefc;--mut:#93a0bb;--acc:#6e8bff;--acc2:#22d3ee;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;--font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;--mono:ui-monospace,Menlo,Consolas,monospace}
 *{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--txt);background:radial-gradient(700px 380px at 15% -5%,rgba(110,139,255,.28),transparent 60%),radial-gradient(700px 420px at 90% 10%,rgba(34,211,238,.16),transparent 60%),var(--bg);min-height:100vh}
@@ -24,7 +34,7 @@ pre{background:#04070f;border:1px solid var(--line);border-radius:12px;color:#c9
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><a href="/">🛡️ PhishShield</a><span id="meta">loading shared report…</span></div>
+  <div class="top"><a href="/">🛡️ DeceptIQ</a><span id="meta">loading shared report…</span></div>
   <div class="card">
     <div class="v" id="v">…</div>
     <div class="sub" id="s"></div>
@@ -42,7 +52,7 @@ pre{background:#04070f;border:1px solid var(--line);border-radius:12px;color:#c9
   try { j = await (await fetch('/api/analyze/report/' + encodeURIComponent(id))).json(); }
   catch { document.getElementById('v').textContent = 'Report unavailable'; return; }
   if (j.error) { document.getElementById('v').textContent = 'Report not found'; document.getElementById('meta').textContent = 'it may have expired (last 200 kept)'; return; }
-  document.title = 'PhishShield: ' + j.verdict + ' (' + j.score + ') — ' + (j.filename || 'scan');
+  document.title = 'DeceptIQ: ' + j.verdict + ' (' + j.score + ') — ' + (j.filename || 'scan');
   const v = document.getElementById('v');
   v.textContent = j.verdict + ' · ' + j.score; v.className = 'v ' + j.verdict;
   document.getElementById('s').textContent = (j.filename||'') + ' · ' + (j.kind||'') + ' · ' + (j.t||'') + ' · ' + (j.mode||'');

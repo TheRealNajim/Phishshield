@@ -1,60 +1,51 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Cell, Pie, PieChart, Tooltip } from "recharts";
 import {
-  LayoutGrid, BarChart3, Bug, Users, FileText, Gauge, TriangleAlert, Bot, Settings, Network,
-  Home, ChevronRight, ChevronDown, Search, Moon, Sun, RefreshCw, ShieldAlert, Crosshair, ArrowUp, ArrowDown, MoreVertical, User,
+  ArrowDown, ArrowUp, ChevronDown, Crosshair, Gauge, MoreVertical, RefreshCw, ShieldAlert, SlidersHorizontal, TriangleAlert,
 } from "lucide-react";
-import avatar from "@/assets/avatar.jpg";
 
 import { ScanPanel } from "@/components/scan-panel";
-import { fetchBilling, fetchHistory, reportUrl } from "@/lib/api";
+import { FilterDropdown } from "@/components/filter-dropdown";
+import { WorkspaceShell } from "@/components/workspace-shell";
+import { fetchHistory, reportUrl } from "@/lib/api";
 import {
   buildStats,
   buildTrend,
   relativeTime,
   severityDistribution,
   shortDate,
-  trendPolyline,
   verdictTone,
 } from "@/lib/threat-stats";
 
-type NavItem = { label: string; icon?: typeof LayoutGrid; heading?: boolean };
-const NAV: NavItem[] = [
-  { label: "Dashboard", icon: LayoutGrid },
-  { label: "Analytics", icon: BarChart3 },
-  { label: "Threats Intelligence", heading: true },
-  { label: "Threats", icon: Bug },
-  { label: "Sources", icon: Users },
-  { label: "Reports", icon: FileText },
-  { label: "Indicators", icon: Gauge },
-  { label: "Operations", heading: true },
-  { label: "Alerts", icon: TriangleAlert },
-  { label: "SOCCo-Pilot", icon: Bot },
-  { label: "Administration", heading: true },
-  { label: "Setting", icon: Settings },
-  { label: "Company Directory", icon: Network },
-];
-
 const ROW_GRID = "grid grid-cols-[1fr_2fr_1.2fr_1fr_1.4fr_1.2fr_0.8fr]";
+
+const TREND_RANGES = [
+  { value: 1, label: "1 day" },
+  { value: 3, label: "3 days" },
+  { value: 7, label: "7 days" },
+  { value: 30, label: "1 month" },
+  { value: 90, label: "3 months" },
+  { value: 365, label: "1 year" },
+];
 
 export function Dashboard() {
   const history = useQuery({ queryKey: ["history"], queryFn: fetchHistory, refetchInterval: 30_000 });
-  const billing = useQuery({ queryKey: ["billing"], queryFn: fetchBilling, staleTime: 5 * 60_000 });
 
   const scans = history.data ?? [];
-  const [dark, setDark] = useState(
-    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
-  );
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-  }, [dark]);
+  const [trendDays, setTrendDays] = useState(7);
+
   const stats = buildStats(scans);
   const distribution = severityDistribution(scans);
-  const trend = buildTrend(scans);
-  const guides = trend.slice(Math.max(0, trend.length - 6));
-  const labels = trend.filter((p) => p.label > 0);
+  const trend = buildTrend(scans, trendDays);
   const rows = scans.slice(0, 5);
+
+  const severityData = [
+    { name: "Critical", value: distribution.critical, fill: "var(--destructive)" },
+    { name: "High", value: distribution.high, fill: "var(--warning)" },
+    { name: "Low", value: distribution.low, fill: "var(--success)" },
+  ];
 
   const STATS = [
     { title: "Critical Threats", value: stats.critical, delta: stats.criticalDelta, note: "Active critical severity threats", icon: ShieldAlert },
@@ -63,66 +54,15 @@ export function Dashboard() {
     { title: "Scans Analysed", value: stats.scans, delta: stats.scansDelta, note: "Verdicts in the report store", icon: Gauge },
   ];
 
-  function upgrade() {
-    const checkout = billing.data?.teams.checkout;
-    if (checkout) window.open(checkout, "_blank", "noreferrer");
-    else window.alert(billing.data?.teams.hint ?? "Teams checkout is not configured yet (set STRIPE_PAYMENT_LINK).");
-  }
+  const refreshAction = (
+    <button onClick={() => history.refetch()} className="flex cursor-pointer items-center gap-2 rounded-[3px] border border-border px-3 py-2 text-sm text-on-chrome">
+      <RefreshCw size={16} className={`text-primary ${history.isFetching ? "animate-spin" : ""}`} /> Refresh Data
+    </button>
+  );
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-chrome px-4 py-6">
-        <div className="flex items-center gap-2 px-2">
-          <span className="grid h-8 w-8 place-items-center rounded-[3px] bg-foreground text-background"><User size={18} /></span>
-          <span className="text-2xl">Sentinel</span><span className="text-sm">Nexus</span>
-        </div>
-        <p className="mt-10 px-2 text-sm uppercase text-muted-foreground">Overview</p>
-        <nav className="mt-3 space-y-1 text-sm">
-          {NAV.map((n, i) =>
-            n.heading ? (
-              <p key={i} className="px-2 pb-1 pt-3 text-muted-foreground">{n.label}</p>
-            ) : (
-              <div key={i} className={`flex items-center gap-3 rounded-[3px] px-3 py-2.5 ${i === 0 ? "nav-active-glow text-foreground" : "nav-link text-gray-400 hover:text-white"}`}>
-                {n.icon && <n.icon size={18} />} <span>{n.label}</span>
-              </div>
-            ),
-          )}
-        </nav>
-        <div className="relative mt-auto pt-12">
-          <div className="absolute left-1/2 top-2 grid h-20 w-20 -translate-x-1/2 rotate-45 place-items-center rounded-[3px] border border-primary bg-secondary">
-            <img src={avatar} alt="User" width={816} height={816} loading="lazy" className="h-12 w-12 -rotate-45 rounded-full object-cover" />
-          </div>
-          <div className="panel px-4 pb-5 pt-14 text-center">
-            <p className="font-semibold">Go Premium Now!</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {billing.data ? `${billing.data.teams.price} for unlimited scans and the staff inbox API.` : "Upgrade to pro for unlimited features!"}
-            </p>
-            <button onClick={upgrade} className="mt-4 w-full rounded-[3px] border border-primary py-2.5 text-sm">Upgrade Now</button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="content-gradient min-w-0 flex-1">
-        <header className="flex items-center gap-4 border-b border-border bg-chrome px-6 py-4">
-          <Home size={18} className="text-muted-foreground" />
-          <ChevronRight size={14} className="text-muted-foreground" />
-          <p className="text-sm">Dashboard</p>
-          <label className="ml-auto flex w-56 cursor-text items-center gap-2 rounded-[3px] border border-border px-3 py-2 text-sm text-muted-foreground"><Search size={16} /><input placeholder="Search" className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground" /></label>
-          <button
-            type="button"
-            onClick={() => setDark((v) => !v)}
-            aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-            title={dark ? "Switch to light theme" : "Switch to dark theme"}
-            className="cursor-pointer rounded-[3px] border border-border p-2"
-          >
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <button onClick={() => history.refetch()} className="flex cursor-pointer items-center gap-2 rounded-[3px] border border-border px-3 py-2 text-sm">
-            <RefreshCw size={16} className={`text-primary ${history.isFetching ? "animate-spin" : ""}`} /> Refresh Data
-          </button>
-        </header>
-
-        <div className="space-y-8 p-6">
+    <WorkspaceShell section="Dashboard" actions={refreshAction}>
+      <div className="space-y-8 p-6">
           <section className="grid grid-cols-2 gap-5 xl:grid-cols-4">
             {STATS.map((s, i) => (
               <div key={i} className="kpi-card p-5 text-center">
@@ -146,19 +86,41 @@ export function Dashboard() {
             <div>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-2xl">Threat Trend by Severity</h2>
-                <button className="flex items-center gap-2 rounded-[3px] border border-border px-3 py-2 text-sm"><User size={14} /> Last 7 Days <ChevronDown size={14} /></button>
+                <FilterDropdown
+                  label="Trend range"
+                  icon={SlidersHorizontal}
+                  prefix="Last"
+                  value={trendDays}
+                  options={TREND_RANGES}
+                  onChange={setTrendDays}
+                  menuAlign="right"
+                />
               </div>
               <div className="chart-bg grid-bg relative h-80 overflow-hidden rounded-[3px] border border-border">
                 <svg viewBox="0 0 430 260" className="h-full w-full" preserveAspectRatio="none">
-                  <defs><filter id="g"><feGaussianBlur stdDeviation="4" /></filter></defs>
-                  {guides.map((p, i) => (
-                    <line key={i} x1={p.x} y1={p.y} x2={p.x} y2={p.y + 60} className="stroke-primary" strokeDasharray="2 3" opacity={0.6} />
-                  ))}
-                  <polyline points={trendPolyline(trend)} fill="none" className="stroke-primary" strokeWidth={6} filter="url(#g)" />
-                  <polyline points={trendPolyline(trend)} fill="none" className="stroke-primary" strokeWidth={2.5} strokeDasharray="1 4" strokeLinecap="round" />
-                  {labels.map((p) => (
-                    <text key={p.x} x={p.x} y={Math.max(10, p.y - 10)} className="fill-primary" fontSize={8}>{p.label}</text>
-                  ))}
+                  {trend.map((p, i) => {
+                    const slot = 430 / trend.length;
+                    const barWidth = Math.max(1, Math.min(34, slot * 0.55));
+                    const x = i * slot + (slot - barWidth) / 2;
+                    return (
+                      <g key={i}>
+                        <rect
+                          x={x}
+                          y={p.y}
+                          width={barWidth}
+                          height={Math.max(0, 230 - p.y)}
+                          rx={Math.min(3, barWidth / 2)}
+                          className="fill-primary"
+                          opacity={0.85}
+                        />
+                        {p.label > 0 && trend.length <= 14 && (
+                          <text x={x + barWidth / 2} y={Math.max(10, p.y - 10)} textAnchor="middle" className="fill-primary" fontSize={10}>
+                            {p.label}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
                 </svg>
                 <p className="absolute bottom-4 w-full text-center text-xs text-muted-foreground">
                   {scans.length === 0 ? "No verdicts in the last 7 days" : "Verdicts per day · agent scans in the sandbox"}
@@ -168,13 +130,51 @@ export function Dashboard() {
             <div>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-2xl">Severity Distribution</h2>
-                <button className="rounded-[3px] border border-primary bg-secondary p-2"><MoreVertical size={16} /></button>
+                <button className="cursor-pointer rounded-[3px] border border-primary bg-secondary p-2"><MoreVertical size={16} /></button>
               </div>
-              <div className="chart-bg relative h-80 overflow-hidden rounded-[3px] border border-border">
-                <div className="absolute left-1/2 top-1/2 h-56 w-64 -translate-x-1/2 -translate-y-[58%]">
-                  <div className="pill-glow absolute left-[28%] top-0 flex h-44 w-24 rotate-[30deg] items-start justify-center rounded-full pt-8 [writing-mode:horizontal-tb] text-sm font-semibold"><span className="-rotate-[30deg]">Critical {distribution.critical}%</span></div>
-                  <div className="pill-glow absolute bottom-0 -left-6 z-10 flex h-24 w-40 items-center justify-start rounded-full pl-6 text-sm font-semibold">High {distribution.high}%</div>
-                  <div className="pill-glow absolute bottom-0 -right-6 flex h-24 w-40 -scale-x-100 items-center justify-start pl-6 rounded-full text-sm font-semibold"><span className="-scale-x-100">Low {distribution.low}%</span></div>
+              <div className="chart-bg relative flex h-80 flex-col overflow-hidden rounded-[3px] border border-border px-4 pb-12 pt-4">
+                <div className="relative mx-auto h-52 w-52">
+                  <PieChart width={208} height={208}>
+                    <Tooltip
+                      formatter={(value) => `${value}%`}
+                      contentStyle={{
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 3,
+                      }}
+                      itemStyle={{ color: "var(--foreground)" }}
+                    />
+                    <Pie
+                      data={severityData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius="62%"
+                      outerRadius="88%"
+                      paddingAngle={3}
+                      strokeWidth={0}
+                    >
+                      {severityData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                    <div className="text-center">
+                      <p className="text-3xl text-foreground">{scans.length}</p>
+                      <p className="text-xs text-muted-foreground">threats</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-center gap-5 text-sm">
+                  {severityData.map((s) => (
+                    <span key={s.name} className="flex items-center gap-1.5">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                        style={{ backgroundColor: s.fill }}
+                      />
+                      {s.name} {s.value}%
+                    </span>
+                  ))}
                 </div>
                 <p className="absolute bottom-5 w-full text-center text-sm">Current threats by severity level</p>
               </div>
@@ -208,12 +208,8 @@ export function Dashboard() {
                 <a href={reportUrl(r.id)} target="_blank" rel="noreferrer" className="w-fit">View</a>
               </div>
             ))}
-            <p className="px-6 text-xs text-muted-foreground">
-              Reports keep the verdict, reasons, indicators and generated code — never the file contents.
-            </p>
           </section>
-        </div>
-      </main>
-    </div>
+      </div>
+    </WorkspaceShell>
   );
 }

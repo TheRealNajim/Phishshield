@@ -2,15 +2,13 @@ import { useRef, useState } from "react";
 import {
   AlertTriangle,
   FileUp,
-  Loader2,
   Mail,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
   X,
 } from "lucide-react";
 
-import { fetchSample, reportUrl, scan, type ScanResult, type Verdict } from "@/lib/api";
+import { reportUrl, scanWithProgress, type ScanResult, type Verdict } from "@/lib/api";
 import { verdictTone } from "@/lib/threat-stats";
 
 const VERDICT_ICON: Record<Verdict, typeof ShieldCheck> = {
@@ -25,14 +23,13 @@ const VERDICT_BAR: Record<Verdict, string> = {
   Malicious: "bg-destructive",
 };
 
-const SAMPLES = ["clean", "phishing", "borderline"] as const;
-
 export function ScanPanel({ onScanned }: { onScanned: () => void }) {
   const [tab, setTab] = useState<"file" | "email">("file");
   const [file, setFile] = useState<File | null>(null);
   const [emailText, setEmailText] = useState("");
   const [deep, setDeep] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -44,25 +41,17 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
     if (!ready || busy) return;
     setBusy(true);
     setError(null);
+    setProgress(tab === "file" ? 0 : null);
     try {
       const payload = tab === "file" ? { file } : { emailText, filename: "pasted-email.eml" };
-      const res = await scan(payload, { deep });
+      const res = await scanWithProgress(payload, { deep }, (p) => setProgress(p));
       setResult(res);
       onScanned();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function loadSample(name: (typeof SAMPLES)[number]) {
-    setError(null);
-    try {
-      setEmailText(await fetchSample(name));
-      setTab("email");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setProgress(null);
     }
   }
 
@@ -87,8 +76,16 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
           type="button"
           onClick={() => setDeep((v) => !v)}
           aria-pressed={deep}
-          className={`rounded-[3px] border px-3 py-2 text-sm ${deep ? "border-primary bg-secondary text-foreground" : "border-border text-muted-foreground"}`}
+          className="flex cursor-pointer items-center gap-2 rounded-[3px] border border-border px-3 py-2 text-sm text-muted-foreground"
         >
+          <span
+            aria-hidden="true"
+            className={`relative h-5 w-9 shrink-0 rounded-[3px] border transition-colors duration-300 ${deep ? "border-primary bg-primary" : "border-border bg-secondary"}`}
+          >
+            <span
+              className={`absolute left-[1px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-[3px] transition-all duration-300 ${deep ? "translate-x-[16px] bg-primary-foreground" : "translate-x-0 bg-muted-foreground"}`}
+            />
+          </span>
           Deep scan {deep ? "· on" : "· off"}
         </button>
       </div>
@@ -123,7 +120,7 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
             setDragging(false);
             pickFile(e.dataTransfer.files?.[0] ?? null);
           }}
-          className={`mt-4 rounded-[3px] border border-dashed p-8 text-center ${dragging ? "border-primary bg-secondary/60" : "border-border bg-secondary/30"}`}
+          className={`mt-4 cursor-pointer rounded-[3px] border border-dashed p-8 text-center ${dragging ? "border-primary bg-secondary/60" : "border-border bg-secondary/30"}`}
         >
           <FileUp size={22} className="mx-auto text-primary" />
           {file ? (
@@ -172,19 +169,6 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
             }
             className="h-44 w-full resize-y rounded-[3px] border border-border bg-secondary/30 p-4 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
           />
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Sparkles size={13} className="text-primary" /> Try a sample:
-            {SAMPLES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => loadSample(name)}
-                className="rounded-full border border-border px-3 py-1 text-foreground"
-              >
-                {name}
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
@@ -193,9 +177,8 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
           type="button"
           onClick={submit}
           disabled={!ready || busy}
-          className="flex items-center gap-2 rounded-[3px] bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+          className="flex cursor-pointer items-center rounded-[3px] bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
         >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
           {busy
             ? deep
               ? "Two sandboxes running…"
@@ -206,6 +189,21 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
         </button>
         {error && <span className="text-sm text-destructive">{error}</span>}
       </div>
+
+      {progress !== null && (
+        <div className="mt-5" role="status" aria-label={`Upload progress ${progress}%`}>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="truncate">Uploading {file?.name ?? "file"}…</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-[3px] bg-secondary">
+            <div
+              className="h-full bg-primary transition-all duration-200"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {result && (
         <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">

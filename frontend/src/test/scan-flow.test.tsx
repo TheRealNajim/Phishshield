@@ -110,20 +110,6 @@ describe("scan panel", () => {
     expect(postsTo(fetchMock, "/api/analyze/deep")).toBe(true);
   });
 
-  it("loads a sample email into the textarea", async () => {
-    stubApi();
-    renderApp();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Bank email" }));
-    fireEvent.click(screen.getByRole("button", { name: "phishing" }));
-
-    await waitFor(() =>
-      expect(screen.getByPlaceholderText(/Paste the raw message/)).toHaveValue(
-        'From: "Chase Bank" <alerts@chase-secure.co>',
-      ),
-    );
-  });
-
   it("reports a rate-limit error from the API", async () => {
     stubApi({
       scanStatus: 429,

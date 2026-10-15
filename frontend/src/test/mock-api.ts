@@ -76,7 +76,7 @@ export interface StubOptions {
 
 /** Replaces global fetch with a stub covering every endpoint the dashboard calls. */
 export function stubApi(options: StubOptions = {}) {
-  const history = options.history ?? historyFixture();
+  let history = options.history ?? historyFixture();
 
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
@@ -84,6 +84,20 @@ export function stubApi(options: StubOptions = {}) {
     const method = (init?.method ?? "GET").toUpperCase();
 
     if (url.includes("/api/analyze/history")) return json(history);
+    if (url.includes("/api/analyze/report/") && method === "GET") {
+      const id = url.split("/").pop() ?? "";
+      const found = history.find((r) => r.id === id);
+      if (!found) return json({ error: "Report not found" }, 404);
+      return json({ ...scanFixture, ...found, agent_code: "# scan.py — written by the agent" });
+    }
+    if (url.includes("/api/analyze/report/") && method === "DELETE") {
+      const id = url.split("/").pop() ?? "";
+      if (!history.some((r) => r.id === id)) return json({ error: "Report not found" }, 404);
+      // Reassign (rather than splice) so refetches yield a new array,
+      // exactly like fresh JSON from the real backend.
+      history = history.filter((r) => r.id !== id);
+      return json({ ok: true });
+    }
     if (url.includes("/api/health")) return json({ ok: true, mock: true });
     if (url.includes("/api/billing")) {
       return json({
