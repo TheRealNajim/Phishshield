@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node tests/run-tests.js"
+    "build": "npm --prefix frontend run build",
+    "test": "node tests/run-tests.js",
+    "test:frontend": "npm --prefix frontend test"
   },
   "dependencies": {
     "@nodeops-createos/sandbox": "^0.8.2",

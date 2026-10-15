@@ -7,11 +7,28 @@ Free for individuals, Teams ($19/mo) for staff inbox protection.
 ```
 cd phishshield
 npm install
+npm --prefix frontend install
 Copy-Item .env.example .env
-npm test     # 18 checks: engine + analyze/deep/report/share/billing API + py parity
+npm run build   # builds frontend/ -> frontend/dist (Express serves it)
+npm test        # 22 checks: engine + analyze/deep/report/share/billing API + py parity
 npm start
 # open http://127.0.0.1:3000
 ```
+
+## Frontend (`frontend/`)
+The dashboard is a Vite + React 19 + TypeScript + Tailwind 4 app (shadcn/radix components included).
+`server.js` serves `frontend/dist` at `/` with an SPA fallback, so the API and UI share one origin.
+
+```
+npm run build                     # build the dashboard (also: npm --prefix frontend run build)
+npm --prefix frontend run dev     # Vite dev server with HMR; proxies /api to Express on :3000
+npm --prefix frontend test        # vitest: stats helpers, render + scan-flow tests
+npm --prefix frontend run typecheck
+```
+- `src/pages/Dashboard.tsx` — the dashboard: stats, severity split, 7-day trend and recent verdicts come from `GET /api/analyze/history`; sandbox mode from `/api/health`; the upgrade card from `/api/billing`.
+- `src/components/scan-panel.tsx` — file/email scan against `POST /api/analyze` (or `/deep`), rendering verdict, score, reasons, IOCs and the agent's `scan.py`. Sample buttons load `/samples/*.eml`.
+- `src/lib/threat-stats.ts` — pure derivations (24h deltas, severity share, daily trend, relative times) with unit tests.
+- `public/index.html` (the old single-file UI) has been replaced; `public/report.html` still backs `/v/:id`.
 
 ## Live CreateOS micro-VM (at hackathon)
 SDK already installed (`@nodeops-createos/sandbox`). In `.env`:
