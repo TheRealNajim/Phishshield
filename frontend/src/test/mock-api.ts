@@ -73,9 +73,72 @@ function json(body: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: () => "application/json" },
     json: async () => body,
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
+}
+
+function sse(event: string, data: unknown) {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+/** A Response-alike that yields one SSE frame per read(), as the real API does. */
+function streamed(text: string, hold?: () => Promise<void>) {
+  const frames = text
+    .split("\n\n")
+    .filter(Boolean)
+    .map((frame) => `${frame}\n\n`);
+  let next = 0;
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get: (name: string) => (name.toLowerCase() === "content-type" ? "text/event-stream" : null),
+    },
+    body: {
+      getReader: () => ({
+        read: async () => {
+          // Yield so React can paint between frames, like a real network stream.
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (next >= frames.length) return { value: undefined, done: true };
+          // Let a test inspect the in-flight view before the verdict lands.
+          if (hold && next === frames.length - 1) await hold();
+          return { value: new TextEncoder().encode(frames[next++]), done: false };
+        },
+      }),
+    },
+    json: async () => ({}),
+    text: async () => text,
+  } as unknown as Response;
+}
+
+/** The frame sequence backend/routes/analyze.js emits for one scan. */
+function streamFor(result: { agent_code?: string; verdict: string; score: number }) {
+  const code = result.agent_code ?? "";
+  return [
+    sse("status", { step: "script", label: "Writing the analyser script", state: "active" }),
+    sse("script", { profile: "standard" }),
+    ...code.split("\n").map((line) => sse("script_line", { profile: "standard", line })),
+    sse("status", { step: "script", label: "Writing the analyser script", state: "done" }),
+    sse("status", { step: "run", label: "Running the analyser", state: "active" }),
+    sse("status", {
+      step: "run",
+      label: "Running the analyser",
+      state: "done",
+      detail: `${result.verdict} · risk ${result.score}`,
+    }),
+    sse("status", { step: "verdict", label: "Writing the plain-English verdict", state: "active" }),
+    sse("llm", { provider: "groq", model: "llama-3.3-70b-versatile", state: "trying" }),
+    sse("llm", { provider: "groq", model: "llama-3.3-70b-versatile", state: "ok" }),
+    sse("status", {
+      step: "verdict",
+      label: "Writing the plain-English verdict",
+      state: "done",
+      detail: "llama-3.3-70b-versatile",
+    }),
+    sse("result", result),
+  ].join("");
 }
 
 export interface StubOptions {
@@ -83,6 +146,10 @@ export interface StubOptions {
   scanResult?: unknown;
   scanStatus?: number;
   scanError?: string;
+  /** Serve /api/analyze/stream as real server-sent events instead of one JSON body. */
+  stream?: boolean;
+  /** Awaited before the final frame, so a test can inspect the in-flight view. */
+  streamHold?: () => Promise<void>;
 }
 
 /** Replaces global fetch with a stub covering every endpoint the dashboard calls. */
@@ -122,6 +189,24 @@ export function stubApi(options: StubOptions = {}) {
       });
     }
     if (url.includes("/samples/")) return json('From: "Chase Bank" <alerts@chase-secure.co>');
+    // Streaming scans answer with SSE. Without `stream: true` this behaves like
+    // a backend that predates the route, so the client's fallback is covered too.
+    if (url.includes("/api/analyze") && url.includes("/stream") && method === "POST") {
+      if (!options.stream) return json({ error: "Cannot POST /api/analyze/stream" }, 404);
+      if (options.scanStatus && options.scanStatus >= 400) {
+        return json({ error: options.scanError ?? "boom" }, options.scanStatus);
+      }
+      const result = (
+        url.includes("/deep")
+          ? (options.scanResult ?? deepScanFixture)
+          : (options.scanResult ?? scanFixture)
+      ) as {
+        agent_code?: string;
+        verdict: string;
+        score: number;
+      };
+      return streamed(streamFor(result), options.streamHold);
+    }
     if (url.includes("/api/analyze/deep")) return json(options.scanResult ?? deepScanFixture);
     if (url.includes("/api/analyze")) {
       if (options.scanStatus && options.scanStatus >= 400) {

@@ -1,15 +1,10 @@
 import { useRef, useState } from "react";
-import {
-  AlertTriangle,
-  FileUp,
-  Mail,
-  ShieldAlert,
-  ShieldCheck,
-  X,
-} from "lucide-react";
+import { AlertTriangle, FileUp, Mail, ShieldAlert, ShieldCheck, X } from "lucide-react";
 
+import { AgentRunModal } from "@/components/agent-run-modal";
 import { NlVerdictCard } from "@/components/nl-verdict";
-import { reportUrl, scanWithProgress, type ScanResult, type Verdict } from "@/lib/api";
+import { emptyRun, reduceRun, type AgentRunState } from "@/lib/agent-run";
+import { reportUrl, scanStream, type ScanResult, type Verdict } from "@/lib/api";
 import { verdictTone } from "@/lib/threat-stats";
 
 const VERDICT_ICON: Record<Verdict, typeof ShieldCheck> = {
@@ -30,7 +25,8 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
   const [emailText, setEmailText] = useState("");
   const [deep, setDeep] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<number | null>(null);
+  const [run, setRun] = useState<AgentRunState | null>(null);
+  const [runHidden, setRunHidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -42,17 +38,27 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
     if (!ready || busy) return;
     setBusy(true);
     setError(null);
-    setProgress(tab === "file" ? 0 : null);
+    setRun(emptyRun);
+    setRunHidden(false);
     try {
       const payload = tab === "file" ? { file } : { emailText, filename: "pasted-email.eml" };
-      const res = await scanWithProgress(payload, { deep }, (p) => setProgress(p));
+      const res = await scanStream(payload, {
+        deep,
+        onEvent: (event) => setRun((prev) => reduceRun(prev ?? emptyRun, event)),
+      });
       setResult(res);
       onScanned();
+      // Free the dropzone for the next upload. The input keeps its own value, so
+      // it has to be cleared too or re-picking the same file fires no change event.
+      if (file) {
+        setFile(null);
+        if (input.current) input.current.value = "";
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
-      setProgress(null);
+      setRun(null);
     }
   }
 
@@ -131,7 +137,7 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
               <button
                 type="button"
                 onClick={() => pickFile(null)}
-                className="mt-3 text-xs text-muted-foreground"
+                className="mt-3 cursor-pointer text-xs text-muted-foreground"
               >
                 <X size={12} className="mr-1 inline" /> remove
               </button>
@@ -143,7 +149,7 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
                 <button
                   type="button"
                   onClick={() => input.current?.click()}
-                  className="text-primary underline"
+                  className="cursor-pointer text-primary underline"
                 >
                   browse
                 </button>
@@ -190,21 +196,6 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
         </button>
         {error && <span className="text-sm text-destructive">{error}</span>}
       </div>
-
-      {progress !== null && (
-        <div className="mt-5" role="status" aria-label={`Upload progress ${progress}%`}>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="truncate">Uploading {file?.name ?? "file"}…</span>
-            <span>{progress}%</span>
-          </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-[3px] bg-secondary">
-            <div
-              className="h-full bg-primary transition-all duration-200"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {result && (
         <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
@@ -307,6 +298,15 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
             </div>
           )}
         </div>
+      )}
+
+      {run && (
+        <AgentRunModal
+          run={run}
+          hidden={runHidden}
+          onHide={() => setRunHidden(true)}
+          onShow={() => setRunHidden(false)}
+        />
       )}
     </section>
   );

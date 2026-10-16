@@ -14,16 +14,17 @@ cd backend
 npm install
 npm --prefix ../frontend install
 cp .env.example .env            # PowerShell: Copy-Item .env.example .env
-# 1) get a free Gemini key: https://aistudio.google.com/apikey
-# 2) paste it into backend/.env as GEMINI_API_KEY=...
+# give the natural-language verdict a provider — either one works:
+#   Groq   (free, fast):  https://console.groq.com/keys      -> LLM_API_KEY=gsk_...
+#   Gemini (free):        https://aistudio.google.com/apikey -> GEMINI_API_KEY=...
 npm run llm:check               # confirms the natural-language verdict works
 npm run build                   # builds ../frontend/dist (Express serves it)
-npm test                        # 34 checks: engine + analyze/deep/report/share/billing API + py parity + trust API
+npm test                        # 36 checks: engine + analyze/deep/stream/report/share/billing API + py parity + trust API
 npm start
 # open http://127.0.0.1:3000
 ```
-Scan verdicts now hard-require `GEMINI_API_KEY` (503 without it). CreateOS and
-Stripe are optional — see below.
+Scan verdicts hard-require a provider key (503 without one). CreateOS and Stripe
+are optional — see below.
 
 ## Frontend (`frontend/`)
 The dashboard is a Vite + React 19 + TypeScript + Tailwind 4 app (shadcn/radix components included).
@@ -37,7 +38,8 @@ npm --prefix ../frontend test        # vitest: stats helpers, render + scan-flow
 npm --prefix ../frontend run typecheck
 ```
 - `src/pages/Dashboard.tsx` — the dashboard: stats, severity split, 7-day trend and recent verdicts come from `GET /api/analyze/history`; sandbox mode from `/api/health`; the upgrade card from `/api/billing`.
-- `src/components/scan-panel.tsx` — file/email scan against `POST /api/analyze` (or `/deep`), rendering verdict, score, reasons, IOCs and the agent's `scan.py`. Sample buttons load `/samples/*.eml`.
+- `src/components/scan-panel.tsx` — file/email scan against `POST /api/analyze/stream` (or `/deep/stream`), rendering verdict, score, reasons, IOCs and the agent's `scan.py`. Sample buttons load `/samples/*.eml`.
+- `src/components/agent-run-modal.tsx` — the live view while a scan runs: the phases it moves through, the Python the agent writes (streamed line by line) and every model it asks for the verdict. Falls back to the plain endpoint when a server has no streaming route. The server sends the script immediately and the modal types it out itself at a readable pace (150 ms/line; set `VITE_SCRIPT_REVEAL_MS` to change it), so the animation never delays the scan.
 - `src/lib/threat-stats.ts` — pure derivations (24h deltas, severity share, daily trend, relative times) with unit tests.
 - `backend/public/report.html` backs the public `/v/:id` report page.
 
@@ -54,15 +56,16 @@ No key? It fails over to mock and labels the result, so the demo never dies.
 ## API
 - `POST /api/analyze` — multipart `file` (8 MB max) or JSON `{emailText}` → `{verdict, score, reasons, iocs, agent_code, nl, id}`
 - `POST /api/analyze/deep` — standard + strict variants in 2 parallel sandboxes → plus `runs[], agreement`
+- `POST /api/analyze/stream` (and `/deep/stream`) — one scan as server-sent events: `status` (phase updates), `script` + `script_line` (the generated Python), `llm` (each provider/model tried), then `result` or `error`. Powers the live agent view.
 - `GET /api/analyze/history` — recent verdicts (hashes only, no contents)
 - `GET /api/analyze/report/:id` — full shareable report · `DELETE` removes it
 - `/v/:id` — public report page for sharing
 - `GET /api/billing` — plans · `GET /api/billing/checkout` → Stripe · `POST /api/billing/webhook` activates Teams keys (verified signature, or demo admin header without secret)
-- `GET /api/health` — `{ok, mock, llm}`. Free tier: 30 scans/hour/IP, bypass with `x-teams-key`.
+- `GET /api/health` — `{ok, mock, llm, llm_provider}`. Free tier: 30 scans/hour/IP, bypass with `x-teams-key`.
 - `GET /samples/*.eml` — one-click demo emails (clean / phishing / borderline)
 
-## Natural-language verdict (Gemini)
-The deterministic engine still decides the verdict, score and evidence. A Gemini
+## Natural-language verdict (Gemini, or any OpenAI-compatible provider)
+The deterministic engine still decides the verdict, score and evidence. An LLM
 call then turns that evidence into a plain-English verdict, returned as `nl`:
 
 ```json
@@ -70,12 +73,17 @@ call then turns that evidence into a plain-English verdict, returned as `nl`:
   "summary": "…why, in 2-4 sentences…",
   "action": "…what the reader should do…",
   "confidence": "high", "verdict": "Malicious", "risk_score": 210,
-  "provider": "gemini", "model": "gemini-3-flash-preview", "generated_at": "…" }
+  "provider": "groq", "model": "llama-3.3-70b-versatile", "generated_at": "…" }
 ```
-- Requires `GEMINI_API_KEY`. Without it `POST /api/analyze[/deep]` returns **503** (`code: LLM_NOT_CONFIGURED`); an upstream/parse failure returns **502**. `GET /api/health` reports `llm: true|false`.
+
+- Two provider shapes, picked by `LLM_PROVIDER` (`auto` | `openai` | `gemini`). `auto`, the default, prefers whichever has a key, OpenAI-compatible first:
+  - `openai` — any OpenAI-compatible `/chat/completions` endpoint. Defaults target **Groq** (free, fast, no card): `LLM_API_KEY`, `LLM_BASE_URL` (`https://api.groq.com/openai/v1`), `LLM_MODEL` (`llama-3.3-70b-versatile`), `LLM_FALLBACK_MODELS`. Cerebras, OpenRouter and Mistral work by changing those three values.
+  - `gemini` — `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_FALLBACK_MODELS`.
+- Whichever provider is not primary is still tried afterwards when it has a key, so one provider being unavailable does not sink the scan.
+- Needs at least one provider key. Without it `POST /api/analyze[/deep][/stream]` returns **503** (`code: LLM_NOT_CONFIGURED`); an upstream or parse failure returns **502**. `GET /api/health` reports `llm` plus the primary `llm_provider`.
 - Only derived signals (verdict, score, reasons, IOCs, deep runs) are sent — never the raw file/message — and the evidence is treated as untrusted data, not instructions.
-- Overrides: `GEMINI_MODEL` (primary), `GEMINI_FALLBACK_MODELS` (comma-separated), `GEMINI_BASE_URL`, `GEMINI_TIMEOUT_MS` (per model), `GEMINI_TOTAL_BUDGET_MS` (whole chain).
-- **Model fallback:** Google retires models (`404`), overloads them (`503`) and throttles free-tier quota (`429`). The client tries `GEMINI_MODEL` first, then a fallback chain, and uses the first model that answers. A slow or overloaded model never aborts the chain — it moves on to the next until the overall budget runs out. Run `npm run llm:check` to see the chain and test your key.
+- Shared overrides: `LLM_TIMEOUT_MS` (per model) and `LLM_TOTAL_BUDGET_MS` (whole chain); the older `GEMINI_TIMEOUT_MS` / `GEMINI_TOTAL_BUDGET_MS` names still work.
+- **Model fallback:** providers retire models (`404`), overload them (`503`) and throttle free-tier quota (`429`). The client tries the primary model, then a fallback chain, then the other provider, and uses the first that answers. A slow or overloaded model never aborts the chain — it moves on until the overall budget runs out. Each attempt is streamed to the UI, so a "high demand" spike reads as visible progress instead of a mysterious pause. Run `npm run llm:check` to see the chain and test your keys.
 
 ## Trust API (`backend/routes/trust.js`) — institutions sign their messages
 Banks seal every outbound email/SMS and append a signed verification link below it

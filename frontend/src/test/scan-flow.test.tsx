@@ -114,6 +114,39 @@ describe("scan panel", () => {
     expect(postsTo(fetchMock, "/api/analyze")).toBe(true);
   });
 
+  it("streams the agent's script while it works, then swaps in the report", async () => {
+    // Hold the verdict frame open so the in-flight view can be inspected.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchMock = stubApi({ stream: true, streamHold: () => held });
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bank email" }));
+    fireEvent.change(screen.getByPlaceholderText(/Paste the raw message/), {
+      target: { value: "From: a@chase-secure.co" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Get verdict/ }));
+
+    // The agent view opens, its script streams in, and it reports each model it asks.
+    const agent = await screen.findByRole("dialog", { name: /analysing/i });
+    expect(await within(agent).findByText(/written by PhishShield agent/)).toBeInTheDocument();
+    expect(await within(agent).findByText("Running the analyser")).toBeInTheDocument();
+    // The model is listed twice as it is tried, then answers — so match any.
+    expect(
+      (await within(agent).findAllByText(/groq\/llama-3\.3-70b-versatile/)).length,
+    ).toBeGreaterThan(0);
+
+    // Releasing the verdict replaces the modal with the report in the panel.
+    release();
+    expect(
+      await screen.findByText(/Lookalike domain chase-secure\.co imitates chase\.com/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /analysing/i })).not.toBeInTheDocument();
+    expect(postsTo(fetchMock, "/api/analyze/stream")).toBe(true);
+  });
+
   it("sends deep scans to /api/analyze/deep and compares both variants", async () => {
     const fetchMock = stubApi();
     renderApp();

@@ -44,19 +44,36 @@ async function main() {
   await new Promise(r => srv.on('listening', r));
   const base = `http://127.0.0.1:${srv.address().port}`;
   try {
-    // Without an LLM key the analyze endpoints must refuse (hard fail).
+    // Without any LLM provider key the analyze endpoints must refuse (hard fail).
+    // Clear every provider, not just Gemini, so a key in .env can't mask this.
     delete process.env.GEMINI_API_KEY;
+    delete process.env.LLM_API_KEY;
+    delete process.env.GROQ_API_KEY;
     let res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: a@chase.com\nReceived: x\n\nhi' }) });
     let j = await res.json();
     fail += check(`POST /api/analyze without LLM key => 503 (${res.status}, ${j.code || 'no code'})`, res.status === 503 && j.code === 'LLM_NOT_CONFIGURED');
 
     // With a key but an unreachable provider, the failure must read as an upstream fault (502), not a 500.
+    process.env.LLM_PROVIDER = 'gemini';
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.GEMINI_BASE_URL = 'http://127.0.0.1:1';
     res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: a@chase.com\nReceived: x\n\nhi' }) });
     j = await res.json();
-    fail += check(`POST /api/analyze with unreachable LLM => 502 (${res.status}, ${j.code || 'no code'})`, res.status === 502 && j.code === 'LLM_UPSTREAM');
+    fail += check(`POST /api/analyze with unreachable Gemini => 502 (${res.status}, ${j.code || 'no code'})`, res.status === 502 && j.code === 'LLM_UPSTREAM');
     delete process.env.GEMINI_BASE_URL;
+
+    // The OpenAI-compatible provider (Groq shape) must honour the same contract.
+    delete process.env.GEMINI_API_KEY;
+    process.env.LLM_PROVIDER = 'openai';
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_BASE_URL = 'http://127.0.0.1:1';
+    res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: a@chase.com\nReceived: x\n\nhi' }) });
+    j = await res.json();
+    fail += check(`POST /api/analyze with unreachable OpenAI-compatible LLM => 502 (${res.status}, ${j.code || 'no code'})`, res.status === 502 && j.code === 'LLM_UPSTREAM');
+    delete process.env.LLM_BASE_URL;
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_PROVIDER;
+    process.env.GEMINI_API_KEY = 'test-key'; // keep one provider configured so /api/health reports llm:true
 
     // Install the natural-language provider (no network in tests).
     const llm = require('../agent/llm');
@@ -97,6 +114,24 @@ async function main() {
     j = await res.json();
     const ok4 = Array.isArray(j.runs) && j.runs.length === 2 && typeof j.agreement === 'boolean' && j.id && j.nl && j.nl.summary;
     console.log(`${ok4 ? 'PASS' : 'FAIL'} POST /api/analyze/deep => ${j.runs ? j.runs.map(r => r.profile + ':' + r.verdict + '(' + r.score + ')').join(' vs ') : 'no runs'} agree=${j.agreement} nl=${j.nl ? 'yes' : 'no'}`); if (!ok4) fail++;
+
+    // Streamed scan: the agent's script and phase updates arrive as SSE, then the report.
+    res = await fetch(base + '/api/analyze/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: alerts@chase.com\nAuthentication-Results: spf=pass dkim=pass dmarc=pass\n\nSee https://chase.com/x' }) });
+    const sse = await res.text();
+    // Match "event: name\n" so "script" cannot also match "script_line".
+    const count = (name) => (sse.match(new RegExp(`event: ${name}\n`, 'g')) || []).length;
+    const dataOf = (block) => { const l = block.split('\n').find(x => x.startsWith('data: ')); return l ? JSON.parse(l.slice(6)) : null; };
+    const lines = sse.split('\n\n').filter(b => b.startsWith('event: script_line')).map(b => dataOf(b).line);
+    const resultBlock = sse.split('\n\n').find(b => b.startsWith('event: result'));
+    const streamed = dataOf(resultBlock || '');
+    // The script embeds a timestamp at build time, so compare with it normalised out.
+    const strip = (s) => String(s).replace(/# Agent-written by PhishShield @[^\n]*/, '# Agent-written by PhishShield @<t>');
+    const okS = res.status === 200
+      && (res.headers.get('content-type') || '').includes('text/event-stream')
+      && count('status') >= 3 && count('script') === 1 && count('script_line') > 20
+      && streamed && typeof streamed.id === 'string'
+      && strip(lines.join('\n')) === strip(streamed.agent_code);
+    console.log(`${okS ? 'PASS' : 'FAIL'} POST /api/analyze/stream => ${lines.length} script lines, ${count('status')} status events, result=${!!streamed}${streamed ? ' id=' + streamed.id : ''}`); if (!okS) fail++;
 
     // Shareable report round-trip
     res = await fetch(base + '/api/analyze/report/' + j.id);

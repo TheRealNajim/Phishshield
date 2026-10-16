@@ -127,42 +127,117 @@ export async function scan(
   return toJson<ScanResult>(await fetch(`${BASE}${path}`, init));
 }
 
-/**
- * File-upload variant of {@link scan} that reports upload progress.
- * `fetch` has no upload-progress events, so file posts go through
- * `XMLHttpRequest`. Anything without a file uses the regular fetch path.
- */
-export function scanWithProgress(
-  input: ScanInput,
-  options: { deep?: boolean } = {},
-  onProgress?: (percent: number) => void,
-): Promise<ScanResult> {
-  const { file, ...rest } = input;
-  if (!file) return scan(rest, options);
+/** One progress event from POST /api/analyze/stream (server-sent events). */
+export type AgentRunEvent =
+  | { type: "status"; step: string; label: string; state: "active" | "done"; detail?: string }
+  | { type: "script"; profile: string }
+  | { type: "script_line"; profile: string; line: string }
+  | {
+      type: "llm";
+      provider: string;
+      model: string;
+      state: "trying" | "ok" | "failed";
+      error?: string;
+    };
 
-  const path = options.deep ? "/analyze/deep" : "/analyze";
-  return new Promise<ScanResult>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${BASE}${path}`);
-    xhr.responseType = "json";
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && e.total > 0) {
-        onProgress?.(Math.min(100, Math.round((e.loaded / e.total) * 100)));
-      }
-    };
-    xhr.onload = () => {
-      const body = xhr.response as (ScanResult & { error?: string }) | null;
-      if (xhr.status >= 200 && xhr.status < 300 && body) {
-        resolve(body);
-      } else {
-        reject(new Error(body?.error ?? `Request failed (${xhr.status})`));
-      }
-    };
-    xhr.onerror = () => reject(new Error("Upload failed (network error)"));
+/** Split one `event:`/`data:` SSE frame; ignores comments and keep-alives. */
+function parseSseFrame(frame: string): { name: string; data: unknown } | null {
+  let name = "message";
+  const data: string[] = [];
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) name = line.slice(6).trim();
+    else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+  }
+  if (data.length === 0) return null;
+  try {
+    return { name, data: JSON.parse(data.join("\n")) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Scan while watching the agent work: POSTs to the streaming endpoint and
+ * reports each server-sent event as it lands, resolving with the finished
+ * report. This replaces upload-percentage progress — the wait is the agent
+ * writing and running its analyser, so that is what the UI should show.
+ *
+ * `fetch` (not XHR) drives this. If a server answers with plain JSON instead —
+ * an older build, or a proxy that strips the event-stream content type — the
+ * body is taken as the result, so the panel still works.
+ */
+export async function scanStream(
+  input: ScanInput,
+  options: {
+    deep?: boolean;
+    onEvent?: (event: AgentRunEvent) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<ScanResult> {
+  const { file, emailText, filename } = input;
+  const path = options.deep ? "/analyze/deep/stream" : "/analyze/stream";
+  let init: RequestInit;
+
+  if (file) {
     const form = new FormData();
     form.append("file", file);
-    xhr.send(form);
-  });
+    init = { method: "POST", body: form };
+  } else {
+    init = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ emailText: emailText ?? "", filename: filename ?? "email.eml" }),
+    };
+  }
+  if (options.signal) init.signal = options.signal;
+
+  const res = await fetch(`${BASE}${path}`, init);
+  // A server that predates the streaming route (an older build, or a proxy in
+  // the way) still answers the plain endpoint — fall back rather than fail.
+  if (res.status === 404 || res.status === 405) {
+    return scan(input, options.deep ? { deep: true } : {});
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Request failed (${res.status})`);
+  }
+
+  const body = res.body;
+  const isStream =
+    !!body &&
+    typeof body.getReader === "function" &&
+    (res.headers.get("content-type") ?? "").includes("text/event-stream");
+  if (!isStream || !body) return (await res.json()) as ScanResult;
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: ScanResult | null = null;
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let split = buffer.indexOf("\n\n");
+    while (split !== -1) {
+      const frame = parseSseFrame(buffer.slice(0, split));
+      buffer = buffer.slice(split + 2);
+      if (frame) {
+        if (frame.name === "result") {
+          result = frame.data as ScanResult;
+        } else if (frame.name === "error") {
+          const failure = frame.data as { error?: string };
+          throw new Error(failure?.error ?? "The scan failed");
+        } else {
+          options.onEvent?.({ type: frame.name, ...(frame.data as object) } as AgentRunEvent);
+        }
+      }
+      split = buffer.indexOf("\n\n");
+    }
+  }
+
+  if (!result) throw new Error("The scan stream ended before a verdict was produced");
+  return result;
 }
 
 /** GET /api/analyze/report/:id — full report with agent code. */

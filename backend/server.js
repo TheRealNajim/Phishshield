@@ -23,7 +23,14 @@ const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
 const FRONTEND_INDEX = path.join(FRONTEND_DIST, 'index.html');
 app.use(express.static(FRONTEND_DIST));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, mock: process.env.MOCK_SANDBOX !== 'false', llm: llm.isConfigured() }));
+app.get('/api/health', (req, res) =>
+  res.json({
+    ok: true,
+    mock: process.env.MOCK_SANDBOX !== 'false',
+    llm: llm.isConfigured(),
+    llm_provider: llm.primaryProvider(),
+  }),
+);
 app.use('/api/analyze', analyzeRoute);
 app.use('/api/billing', billingRoute);
 app.use('/api/trust', trustRoute.router);
