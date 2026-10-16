@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 
+import { NlVerdictCard } from "@/components/nl-verdict";
 import { reportUrl, scanWithProgress, type ScanResult, type Verdict } from "@/lib/api";
 import { verdictTone } from "@/lib/threat-stats";
 
@@ -242,6 +243,8 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
               <p className="mt-3 text-xs text-muted-foreground">run mode: {result.mode}</p>
             )}
 
+            <NlVerdictCard nl={result.nl} />
+
             {result.runs && (
               <div className="mt-4 space-y-2 text-xs">
                 {result.runs.map((run) => (
@@ -263,11 +266,11 @@ export function ScanPanel({ onScanned }: { onScanned: () => void }) {
               </div>
             )}
 
-            <ul className="mt-4 space-y-2">
+            <ul className="mt-4 flex flex-wrap gap-2">
               {result.reasons.map((reason) => (
                 <li
                   key={reason}
-                  className="rounded-[3px] border border-border bg-card px-3 py-2 text-sm"
+                  className="w-fit rounded-[3px] border border-border bg-card px-3 py-2 text-sm"
                 >
                   {reason}
                 </li>

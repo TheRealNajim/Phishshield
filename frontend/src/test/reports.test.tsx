@@ -122,6 +122,9 @@ describe("reports archive", () => {
     await screen.findByText("chase-alert.eml");
     openRow("chase-alert.eml");
     expect(await screen.findByText("Lookalike domain chase-secure.co imitates chase.com")).toBeInTheDocument();
+    expect(
+      await screen.findByText("This email is a phishing attempt impersonating Chase."),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show code" }));
     expect(screen.getByText("# scan.py — written by the agent")).toBeInTheDocument();

@@ -44,6 +44,17 @@ export const scanFixture = {
   size: 512,
   mode: "mock-sandbox (local)",
   agent_code: "# scan.py — written by PhishShield agent (standard variant)",
+  nl: {
+    headline: "This email is a phishing attempt impersonating Chase.",
+    summary: "It comes from a lookalike domain and pressures you to hand over your PIN and OTP.",
+    action: "Do not reply or click anything. Delete it and call Chase on the number on your card.",
+    confidence: "high" as const,
+    verdict: "Malicious" as const,
+    risk_score: 200,
+    provider: "gemini",
+    model: "gemini-3-flash-preview",
+    generated_at: new Date(0).toISOString(),
+  },
 };
 
 export const deepScanFixture = {

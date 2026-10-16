@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "@/App";
@@ -71,6 +71,23 @@ describe("dashboard data wiring", () => {
       await screen.findByText(/Could not load verdict history: history down/),
     ).toBeInTheDocument();
   });
+  it("opens scan details in a modal instead of a new tab", async () => {
+    stubApi();
+    renderApp();
+
+    const viewButtons = await screen.findAllByRole("button", { name: "View" });
+    const firstView = viewButtons[0];
+    if (!firstView) throw new Error("no View buttons rendered");
+    fireEvent.click(firstView);
+
+    const modal = await screen.findByRole("dialog", { name: /Scan details/ });
+    expect(
+      await within(modal).findByText("Lookalike domain chase-secure.co imitates chase.com"),
+    ).toBeInTheDocument();
+    expect(
+      await within(modal).findByText("This email is a phishing attempt impersonating Chase."),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("scan panel", () => {
@@ -88,6 +105,10 @@ describe("scan panel", () => {
       await screen.findByText(/Lookalike domain chase-secure\.co imitates chase\.com/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Asks for BVN\/NIN\/OTP\/PIN/)).toBeInTheDocument();
+    expect(
+      screen.getByText("This email is a phishing attempt impersonating Chase."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Do not reply or click anything/)).toBeInTheDocument();
     expect(screen.getByText(/scan\.py — written and run by the agent/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Share report" })).toHaveAttribute("href", "/v/new1");
     expect(postsTo(fetchMock, "/api/analyze")).toBe(true);

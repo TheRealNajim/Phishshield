@@ -52,7 +52,7 @@ export function WorkspaceShell({
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className={`flex shrink-0 flex-col border-r border-border bg-chrome py-6 transition-all duration-300 ${collapsed ? "w-[68px] px-2" : "w-60 px-4"}`}>
+      <aside className={`sticky top-0 flex h-screen shrink-0 flex-col overflow-y-auto border-r border-border bg-chrome py-6 transition-all duration-300 ${collapsed ? "w-[68px] px-2" : "w-60 px-4"}`}>
         <div className={`flex items-center gap-2 px-2 text-on-chrome ${collapsed ? "justify-center px-0" : ""}`}>
           {collapsed ? (
             <img src="/favicon-2.png" alt="DeceptIQ mark" className="h-8 w-8 shrink-0 rounded-[3px]" />
@@ -82,7 +82,7 @@ export function WorkspaceShell({
       </aside>
 
       <main className="content-gradient min-w-0 flex-1">
-        <header className="flex items-center gap-4 border-b border-border bg-chrome px-6 py-4">
+        <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-border bg-chrome px-6 py-4">
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}

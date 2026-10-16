@@ -213,7 +213,7 @@ export function Threats() {
                 key={r.id}
                 type="button"
                 onClick={() => openInvestigation(r.id)}
-                className="row-panel grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 px-6 py-4 text-left text-sm"
+                className="row-panel grid w-full cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 px-6 py-4 text-left text-sm"
               >
                 <span className={`flex items-center gap-1.5 ${verdictTone(r.verdict)}`}>
                   <span className={`h-2 w-2 rounded-full ${r.verdict === "Malicious" ? "bg-destructive" : r.verdict === "Suspicious" ? "bg-warning" : "bg-success"}`} />
@@ -300,9 +300,9 @@ export function Threats() {
               {selected.reasons.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">No reasons recorded.</p>
               ) : (
-                <ul className="mt-2 space-y-2">
+                <ul className="mt-2 flex flex-wrap gap-2">
                   {selected.reasons.map((reason) => (
-                    <li key={reason} className="rounded-[3px] border border-border bg-secondary/30 px-3 py-2 text-sm">
+                    <li key={reason} className="w-fit rounded-[3px] border border-border bg-secondary/30 px-3 py-2 text-sm">
                       {reason}
                     </li>
                   ))}

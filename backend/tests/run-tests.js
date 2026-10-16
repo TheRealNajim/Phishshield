@@ -1,3 +1,10 @@
+// Point every JSON store at a throwaway directory *before* anything reads it, so
+// test scans never land in the real reports the dashboard serves.
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+process.env.PHISHSHIELD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'phishshield-data-'));
+
 const { scan } = require('../sandbox/local-engine');
 
 const cases = [

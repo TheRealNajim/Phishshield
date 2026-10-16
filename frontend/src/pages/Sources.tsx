@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Globe, RefreshCw, Repeat, Search, ShieldAlert, Tag, X } from "lucide-react";
 
 import { FilterDropdown } from "@/components/filter-dropdown";
+import { ScanDetailModal } from "@/components/scan-detail-modal";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { fetchHistory, reportUrl } from "@/lib/api";
+import { fetchHistory } from "@/lib/api";
 import type { Verdict } from "@/lib/api";
 import { buildSources, relativeTime, shortDate, verdictTone } from "@/lib/threat-stats";
 import { useRoute } from "@/lib/route";
@@ -43,6 +44,7 @@ export function Sources() {
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
 
   useEffect(() => {
     setVisible(PAGE_SIZE);
@@ -265,9 +267,9 @@ export function Sources() {
               {active.evidence.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">No direct evidence recorded for this source.</p>
               ) : (
-                <ul className="mt-2 space-y-2">
+                <ul className="mt-2 flex flex-wrap gap-2">
                   {active.evidence.map((reason) => (
-                    <li key={reason} className="rounded-[3px] border border-border bg-secondary/30 px-3 py-2 text-sm">
+                    <li key={reason} className="w-fit rounded-[3px] border border-border bg-secondary/30 px-3 py-2 text-sm">
                       {reason}
                     </li>
                   ))}
@@ -283,9 +285,13 @@ export function Sources() {
                     <span className={verdictTone(rep.verdict)}>{rep.verdict}</span>
                     <span className="min-w-0 flex-1 truncate">{rep.filename}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(rep.t)}</span>
-                    <a href={reportUrl(rep.id)} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-primary underline">
+                    <button
+                      type="button"
+                      onClick={() => setViewId(rep.id)}
+                      className="shrink-0 cursor-pointer text-xs text-primary underline"
+                    >
                       View
-                    </a>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -308,6 +314,8 @@ export function Sources() {
           </aside>
         </div>
       )}
+
+      <ScanDetailModal id={viewId} onClose={() => setViewId(null)} />
     </WorkspaceShell>
   );
 }

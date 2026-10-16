@@ -80,7 +80,11 @@ describe("indicators inventory", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Lookalike domain chase-secure.co imitates chase.com")).toBeInTheDocument();
     expect(within(dialog).getByText("chase.com")).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: "View" })).toHaveAttribute("href", "/v/r1");
+    fireEvent.click(within(dialog).getByRole("button", { name: "View" }));
+    const scanModal = await screen.findByRole("dialog", { name: /Scan details/ });
+    expect(
+      await within(scanModal).findByText("Lookalike domain chase-secure.co imitates chase.com"),
+    ).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "View in Sources" })).toHaveAttribute(
       "href",
       "#/sources?q=chase-secure.co",

@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 
 import { FilterDropdown } from "@/components/filter-dropdown";
+import { NlVerdictCard } from "@/components/nl-verdict";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { deleteReport, fetchHistory, fetchReport, reportUrl } from "@/lib/api";
 import type { ScanResult, ScanSummary, Verdict } from "@/lib/api";
@@ -395,14 +396,16 @@ export function Reports() {
               </div>
             </dl>
 
+            <NlVerdictCard nl={detail?.nl ?? summary?.nl} />
+
             <div>
               <p className="text-sm text-muted-foreground">Why this was flagged</p>
               {reasons.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">No reasons recorded.</p>
               ) : (
-                <ul className="mt-2 space-y-2">
+                <ul className="mt-2 flex flex-wrap gap-2">
                   {reasons.map((reason) => (
-                    <li key={reason} className="rounded-[3px] border border-border bg-secondary/30 px-3 py-2 text-sm">
+                    <li key={reason} className="w-fit rounded-[3px] border border-border bg-secondary/30 px-3 py-2 text-sm">
                       {reason}
                     </li>
                   ))}

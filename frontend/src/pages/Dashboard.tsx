@@ -5,10 +5,11 @@ import {
   ArrowDown, ArrowUp, ChevronDown, Crosshair, Gauge, MoreVertical, RefreshCw, ShieldAlert, SlidersHorizontal, TriangleAlert,
 } from "lucide-react";
 
+import { ScanDetailModal } from "@/components/scan-detail-modal";
 import { ScanPanel } from "@/components/scan-panel";
 import { FilterDropdown } from "@/components/filter-dropdown";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { fetchHistory, reportUrl } from "@/lib/api";
+import { fetchHistory } from "@/lib/api";
 import {
   buildStats,
   buildTrend,
@@ -35,6 +36,7 @@ export function Dashboard() {
   const scans = history.data ?? [];
 
   const [trendDays, setTrendDays] = useState(7);
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const stats = buildStats(scans);
   const distribution = severityDistribution(scans);
@@ -205,11 +207,19 @@ export function Dashboard() {
                 <span>{r.kind === "email" ? "Email threat" : "File"}</span><span>{shortDate(r.t)}</span>
                 <span className="truncate">{r.mode ?? "—"}</span>
                 <span className={`w-fit rounded-full bg-secondary px-4 py-2 ${r.verdict === "Verified" ? "text-success" : ""}`}>{relativeTime(r.t)}</span>
-                <a href={reportUrl(r.id)} target="_blank" rel="noreferrer" className="w-fit">View</a>
+                <button
+                  type="button"
+                  onClick={() => setViewId(r.id)}
+                  className="w-fit cursor-pointer text-left"
+                >
+                  View
+                </button>
               </div>
             ))}
           </section>
       </div>
+
+      <ScanDetailModal id={viewId} onClose={() => setViewId(null)} />
     </WorkspaceShell>
   );
 }

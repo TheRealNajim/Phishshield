@@ -14,6 +14,19 @@ export interface ScanRun {
   score: number;
 }
 
+/** The Gemini-written explanation of a scan. Never overrides the engine's verdict/score. */
+export interface NlVerdict {
+  headline: string;
+  summary: string;
+  action: string;
+  confidence: "low" | "medium" | "high";
+  verdict: Verdict;
+  risk_score: number;
+  provider: string;
+  model: string;
+  generated_at: string;
+}
+
 export interface ScanResult {
   id: string;
   verdict: Verdict;
@@ -28,6 +41,11 @@ export interface ScanResult {
   runs?: ScanRun[];
   agreement?: boolean;
   deep?: boolean;
+  nl?: NlVerdict;
+  // Present on stored reports (GET /api/analyze/report/:id), not on the
+  // immediate scan response.
+  filename?: string;
+  t?: string;
 }
 
 // GET /api/analyze/history trims agent_code and flags has_code instead.

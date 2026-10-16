@@ -88,7 +88,11 @@ describe("sources directory", () => {
     expect(await screen.findByText("Lookalike domain chase-secure.co imitates chase.com")).toBeInTheDocument();
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("chase.com")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("href", "/v/r1");
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    const scanModal = await screen.findByRole("dialog", { name: /Scan details/ });
+    expect(
+      await within(scanModal).findByText("Lookalike domain chase-secure.co imitates chase.com"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open in Indicators" })).toHaveAttribute(
       "href",
       "#/indicators",

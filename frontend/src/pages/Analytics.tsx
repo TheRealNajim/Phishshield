@@ -5,8 +5,9 @@ import { ArrowDown, ArrowUp, Download, RefreshCw } from "lucide-react";
 
 import { FilterDropdown } from "@/components/filter-dropdown";
 
+import { ScanDetailModal } from "@/components/scan-detail-modal";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { fetchHistory, reportUrl, type Verdict } from "@/lib/api";
+import { fetchHistory, type Verdict } from "@/lib/api";
 import {
   DAY_MS,
   buildActivity,
@@ -51,6 +52,7 @@ export function Analytics() {
   const [customEnd, setCustomEnd] = useState("");
   const [kind, setKind] = useState<"all" | "email" | "file">("all");
   const [verdict, setVerdict] = useState<"all" | Verdict>("all");
+  const [viewId, setViewId] = useState<string | null>(null);
 
   const range = useMemo(() => {
     if (preset === "24h") return { start: now - DAY_MS, end: now, days: 1 };
@@ -412,22 +414,23 @@ export function Analytics() {
             </div>
           )}
           {recent.map((r) => (
-            <a
+            <button
               key={r.id}
-              href={reportUrl(r.id)}
-              target="_blank"
-              rel="noreferrer"
-              className="row-panel flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-sm"
+              type="button"
+              onClick={() => setViewId(r.id)}
+              className="row-panel flex w-full cursor-pointer flex-wrap items-center gap-x-4 gap-y-1 px-6 py-4 text-left text-sm"
             >
               <span className={verdictTone(r.verdict)}>{r.verdict}</span>
               <span className="min-w-0 flex-1 truncate">{r.filename}</span>
               <span className="text-xs text-muted-foreground">Risk score {r.score}</span>
               <span className="text-xs text-muted-foreground">{relativeTime(r.t)}</span>
               <span className="w-fit">View</span>
-            </a>
+            </button>
           ))}
         </section>
       </div>
+
+      <ScanDetailModal id={viewId} onClose={() => setViewId(null)} />
     </WorkspaceShell>
   );
 }

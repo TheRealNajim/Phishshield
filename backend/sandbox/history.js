@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DIR = path.join(__dirname, '..', 'data');
+const DIR = require('./data-dir');
 const FILE = path.join(DIR, 'history.jsonl');
 const MAX = 200;
 

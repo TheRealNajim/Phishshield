@@ -10,6 +10,10 @@
 // when it is missing. Tests inject a fake provider with setProvider().
 
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 20000);
+// Overall wall-clock budget for the whole fallback chain. Models can be slow or
+// overloaded, and one slow model must not sink the whole attempt; this cap stops
+// us from stacking 20s timeouts indefinitely.
+const TOTAL_BUDGET_MS = Number(process.env.GEMINI_TOTAL_BUDGET_MS || 60000);
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 const DEFAULT_MODEL = 'gemini-flash-latest';
 // Tried in order if the primary model is retired (404), overloaded (503),
@@ -232,7 +236,14 @@ async function explain(scan) {
 
   const failures = [];
   let lastErr = null;
+  const startedAt = Date.now();
   for (const model of modelChain()) {
+    // A slow or overloaded model says nothing about the next one, so keep going
+    // until the overall budget runs out.
+    if (Date.now() - startedAt >= TOTAL_BUDGET_MS) {
+      failures.push(`gave up after ${TOTAL_BUDGET_MS}ms`);
+      break;
+    }
     try {
       const { parsed, model: used } = await callGemini(scan, model);
       return normalize(parsed, scan, used);
@@ -240,12 +251,6 @@ async function explain(scan) {
       if (e.code === 'LLM_NOT_CONFIGURED') throw e;
       failures.push(`${model} → ${String(e.message).replace(/\s+/g, ' ').slice(0, 120)}`);
       lastErr = e;
-      // A timeout means the endpoint is slow, not that this model is wrong;
-      // trying more models would just stack up more waiting.
-      if (e.timedOut) {
-        failures.push('stopped after network timeout');
-        break;
-      }
     }
   }
   if (lastErr) {

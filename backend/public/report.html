@@ -38,6 +38,11 @@ pre{background:#04070f;border:1px solid var(--line);border-radius:12px;color:#c9
   <div class="card">
     <div class="v" id="v">…</div>
     <div class="sub" id="s"></div>
+    <div id="nl" hidden>
+      <p id="nl-h" style="margin:16px 0 0;font-size:16px;font-weight:800"></p>
+      <p id="nl-s" style="margin:8px 0 0;font-size:14px;line-height:1.5"></p>
+      <p id="nl-a" style="margin:10px 0 0;font-size:13.5px;color:var(--mut)"></p>
+    </div>
     <ul id="r"></ul>
     <div id="runs" style="margin-top:14px"></div>
     <h4 style="color:var(--mut)">Agent code (ran in sandbox)</h4>
@@ -57,6 +62,12 @@ pre{background:#04070f;border:1px solid var(--line);border-radius:12px;color:#c9
   v.textContent = j.verdict + ' · ' + j.score; v.className = 'v ' + j.verdict;
   document.getElementById('s').textContent = (j.filename||'') + ' · ' + (j.kind||'') + ' · ' + (j.t||'') + ' · ' + (j.mode||'');
   document.getElementById('meta').textContent = 'shared report ' + j.id;
+  if (j.nl && j.nl.headline) {
+    document.getElementById('nl-h').textContent = j.nl.headline;
+    document.getElementById('nl-s').textContent = j.nl.summary || '';
+    document.getElementById('nl-a').textContent = j.nl.action ? 'What to do: ' + j.nl.action : '';
+    document.getElementById('nl').hidden = false;
+  }
   document.getElementById('r').innerHTML = (j.reasons||[]).map(x=>`<li>${x}</li>`).join('');
   if (j.runs) document.getElementById('runs').innerHTML = '<div class="sub">deep scan · ' + j.runs.map(r=>r.profile+': '+r.verdict+' ('+r.score+')').join(' vs ') + '</div>';
   document.getElementById('c').textContent = (j.agent_code||'// code not stored').slice(0,6000);

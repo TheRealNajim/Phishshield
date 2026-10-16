@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const FILE = path.join(__dirname, '..', 'data', 'institutions.json');
+const FILE = path.join(require('./data-dir'), 'institutions.json');
 
 function load() {
   try {
