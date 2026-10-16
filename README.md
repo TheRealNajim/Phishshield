@@ -70,11 +70,12 @@ call then turns that evidence into a plain-English verdict, returned as `nl`:
   "summary": "…why, in 2-4 sentences…",
   "action": "…what the reader should do…",
   "confidence": "high", "verdict": "Malicious", "risk_score": 210,
-  "provider": "gemini", "model": "gemini-flash-latest", "generated_at": "…" }
+  "provider": "gemini", "model": "gemini-3-flash-preview", "generated_at": "…" }
 ```
 - Requires `GEMINI_API_KEY`. Without it `POST /api/analyze[/deep]` returns **503** (`code: LLM_NOT_CONFIGURED`); an upstream/parse failure returns **502**. `GET /api/health` reports `llm: true|false`.
 - Only derived signals (verdict, score, reasons, IOCs, deep runs) are sent — never the raw file/message — and the evidence is treated as untrusted data, not instructions.
-- Overrides: `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_TIMEOUT_MS`.
+- Overrides: `GEMINI_MODEL` (primary), `GEMINI_FALLBACK_MODELS` (comma-separated), `GEMINI_BASE_URL`, `GEMINI_TIMEOUT_MS`.
+- **Model fallback:** Google retires models (`404`), overloads them (`503`) and throttles free-tier quota (`429`). The client tries `GEMINI_MODEL` first, then a fallback chain, and uses the first model that answers — stopping early on a network timeout. Run `npm run llm:check` to see the chain and test your key.
 
 ## Trust API (`backend/routes/trust.js`) — institutions sign their messages
 Banks seal every outbound email/SMS and append a signed verification link below it

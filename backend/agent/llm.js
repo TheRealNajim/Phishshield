@@ -12,15 +12,16 @@
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 20000);
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 const DEFAULT_MODEL = 'gemini-flash-latest';
-// Tried in order if the primary model is retired (404), overloaded (503), or
-// returns unusable output. Keys differ in which models they can see, so a 404
-// simply moves on to the next one.
+// Tried in order if the primary model is retired (404), overloaded (503),
+// rate-limited (429), or returns unusable output. Ordered so the models most
+// likely to answer come first; a 404/503 simply moves on to the next one.
 const DEFAULT_FALLBACKS = [
-  'gemini-flash-latest',
-  'gemini-2.5-flash-lite',
+  'gemini-3-flash-preview',
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
-  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-3.8-flash',
 ];
 
 function apiKey() {
@@ -180,8 +181,15 @@ async function callGemini(scan, model) {
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    const err = new Error(`Gemini request failed (${res.status}): ${detail.slice(0, 300)}`);
+    let apiMsg = '';
+    try {
+      apiMsg = JSON.parse(detail).error.message || '';
+    } catch {
+      /* not JSON */
+    }
+    const err = new Error(apiMsg ? `HTTP ${res.status}: ${apiMsg}` : `HTTP ${res.status}: ${detail.slice(0, 200)}`);
     err.code = 'LLM_UPSTREAM';
+    err.status = res.status;
     throw err;
   }
 
@@ -222,7 +230,7 @@ async function explain(scan) {
     throw e;
   }
 
-  const tried = [];
+  const failures = [];
   let lastErr = null;
   for (const model of modelChain()) {
     try {
@@ -230,16 +238,20 @@ async function explain(scan) {
       return normalize(parsed, scan, used);
     } catch (e) {
       if (e.code === 'LLM_NOT_CONFIGURED') throw e;
-      tried.push(model);
+      failures.push(`${model} → ${String(e.message).replace(/\s+/g, ' ').slice(0, 120)}`);
       lastErr = e;
       // A timeout means the endpoint is slow, not that this model is wrong;
       // trying more models would just stack up more waiting.
-      if (e.timedOut) break;
+      if (e.timedOut) {
+        failures.push('stopped after network timeout');
+        break;
+      }
     }
   }
   if (lastErr) {
-    lastErr.message += ` (tried: ${tried.join(', ')})`;
-    throw lastErr;
+    const err = new Error(`No Gemini model available: ${failures.join(' | ')}`);
+    err.code = lastErr.code || 'LLM_UPSTREAM';
+    throw err;
   }
   throw new Error('No Gemini model configured');
 }
