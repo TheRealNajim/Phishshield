@@ -1,18 +1,18 @@
 # PhishShield dashboard
 
 The PhishShield front end: a Vite + React 19 + TypeScript + Tailwind 4 single-page app. The
-Express server in the repo root serves this app's `dist/` at `/` with an SPA fallback, so the UI
+Express server in `backend/` serves this app's `dist/` at `/` with an SPA fallback, so the UI
 and the API share one origin.
 
 ## Run it
 
 ```sh
 npm install
-npm run build   # -> dist/, served by `npm start` in the repo root
+npm run build   # -> dist/, served by `npm start` in `backend/`
 npm run dev     # Vite dev server with HMR; proxies /api to http://127.0.0.1:3000
 ```
 
-For local development run the API as well (`npm start` in the repo root) — `npm run dev` proxies
+For local development run the API as well (`npm start` in `backend/`) — `npm run dev` proxies
 `/api` to it. Nothing else needs configuring: the client calls same-origin `/api/...`.
 
 ## What's here

@@ -1,8 +1,8 @@
 # frontend/
 
 The PhishShield dashboard: a Vite + React 19 + TypeScript + Tailwind 4 single-page app. The
-Express server in the repo root serves this app's `dist/` at `/` with an SPA fallback, so the UI
-and the API share one origin.
+Express server in `backend/` (`backend/server.js`) serves this app's `dist/` at `/` with an SPA
+fallback, so the UI and the API share one origin.
 
 ## Scripts
 

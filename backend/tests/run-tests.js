@@ -13,8 +13,15 @@ const cases = [
   { name: 'extension LINK lines catch display-vs-href mismatch', buf: Buffer.from('From: Kuda Bank <alerts@kuda.com>\nAuthentication-Results: spf=pass dkim=pass dmarc=pass\nSubject: x\n\nTap to continue\n[[LINK text="https://kuda.com/login" href="http://45.9.20.11/login"]]'), file: 'g.eml', wantScore: 50, wantReason: 'Link shows' },
 ];
 
+function check(label, ok) {
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`);
+  return ok ? 0 : 1;
+}
+
 async function main() {
   let fail = 0;
+
+  // --- Engine parity (no LLM involved) --------------------------------------
   for (const c of cases) {
     const r = scan(c.buf, c.file, ['chase.com']);
     let ok = c.want ? r.verdict === c.want : r.score >= c.wantScore;
@@ -23,22 +30,55 @@ async function main() {
     if (!ok) fail++;
   }
 
-  // API integration: analyze + history + billing (mock sandbox)
+  // --- API integration (mock sandbox) ---------------------------------------
   process.env.MOCK_SANDBOX = 'true';
   const app = require('../server');
   const srv = app.listen(0);
   await new Promise(r => srv.on('listening', r));
   const base = `http://127.0.0.1:${srv.address().port}`;
   try {
-    let res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: alerts@chase.com\nAuthentication-Results: spf=pass dkim=pass dmarc=pass\n\nSee https://chase.com/x' }) });
+    // Without an LLM key the analyze endpoints must refuse (hard fail).
+    delete process.env.GEMINI_API_KEY;
+    let res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: a@chase.com\nReceived: x\n\nhi' }) });
     let j = await res.json();
-    const ok1 = j.verdict === 'Verified' && typeof j.agent_code === 'string';
-    console.log(`${ok1 ? 'PASS' : 'FAIL'} POST /api/analyze email => ${j.verdict} (agent_code ${(j.agent_code || '').length} chars)`); if (!ok1) fail++;
+    fail += check(`POST /api/analyze without LLM key => 503 (${res.status}, ${j.code || 'no code'})`, res.status === 503 && j.code === 'LLM_NOT_CONFIGURED');
+
+    // With a key but an unreachable provider, the failure must read as an upstream fault (502), not a 500.
+    process.env.GEMINI_API_KEY = 'test-key';
+    process.env.GEMINI_BASE_URL = 'http://127.0.0.1:1';
+    res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: a@chase.com\nReceived: x\n\nhi' }) });
+    j = await res.json();
+    fail += check(`POST /api/analyze with unreachable LLM => 502 (${res.status}, ${j.code || 'no code'})`, res.status === 502 && j.code === 'LLM_UPSTREAM');
+    delete process.env.GEMINI_BASE_URL;
+
+    // Install the natural-language provider (no network in tests).
+    const llm = require('../agent/llm');
+    llm.setProvider(async (s) => ({
+      headline: `${s.verdict} verdict for ${s.filename || 'input'}`,
+      summary: `Risk score ${s.score}. Evidence: ${(s.reasons || []).join('; ') || 'none'}.`,
+      action: 'Confirm with your bank through a number you trust before acting.',
+      confidence: 'high',
+      verdict: s.verdict,
+      risk_score: s.score,
+      provider: 'test',
+      model: 'test-model',
+      generated_at: new Date().toISOString(),
+    }));
+
+    res = await fetch(base + '/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: alerts@chase.com\nAuthentication-Results: spf=pass dkim=pass dmarc=pass\n\nSee https://chase.com/x' }) });
+    j = await res.json();
+    const ok1 = j.verdict === 'Verified' && typeof j.agent_code === 'string' && j.nl && j.nl.headline && j.nl.summary && j.nl.action;
+    console.log(`${ok1 ? 'PASS' : 'FAIL'} POST /api/analyze email => ${j.verdict} (nl: ${j.nl ? `"${j.nl.headline}"` : 'MISSING'})`); if (!ok1) fail++;
 
     res = await fetch(base + '/api/analyze/history');
     j = await res.json();
     const ok2 = Array.isArray(j) && j.length >= 1;
     console.log(`${ok2 ? 'PASS' : 'FAIL'} GET /api/analyze/history => ${Array.isArray(j) ? j.length : typeof j} entries`); if (!ok2) fail++;
+
+    res = await fetch(base + '/api/health');
+    j = await res.json();
+    const okH = j.ok === true && j.llm === true;
+    console.log(`${okH ? 'PASS' : 'FAIL'} GET /api/health => llm=${j.llm}`); if (!okH) fail++;
 
     res = await fetch(base + '/api/billing');
     j = await res.json();
@@ -48,14 +88,14 @@ async function main() {
     // Deep scan: borderline input should split the two runs (standard Verified, strict Suspicious+)
     res = await fetch(base + '/api/analyze/deep', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emailText: 'From: alerts@chase.com\nAuthentication-Results: spf=pass dkim=pass dmarc=pass\nSubject: hello\n\nclick https://xn--chse-9na.com/login urgently verify now with your password' }) });
     j = await res.json();
-    const ok4 = Array.isArray(j.runs) && j.runs.length === 2 && typeof j.agreement === 'boolean' && j.id;
-    console.log(`${ok4 ? 'PASS' : 'FAIL'} POST /api/analyze/deep => ${j.runs ? j.runs.map(r => r.profile + ':' + r.verdict + '(' + r.score + ')').join(' vs ') : 'no runs'} agree=${j.agreement}`); if (!ok4) fail++;
+    const ok4 = Array.isArray(j.runs) && j.runs.length === 2 && typeof j.agreement === 'boolean' && j.id && j.nl && j.nl.summary;
+    console.log(`${ok4 ? 'PASS' : 'FAIL'} POST /api/analyze/deep => ${j.runs ? j.runs.map(r => r.profile + ':' + r.verdict + '(' + r.score + ')').join(' vs ') : 'no runs'} agree=${j.agreement} nl=${j.nl ? 'yes' : 'no'}`); if (!ok4) fail++;
 
     // Shareable report round-trip
     res = await fetch(base + '/api/analyze/report/' + j.id);
-    const rep = await res.json();
-    const ok5 = rep.id === j.id && rep.verdict === j.verdict;
-    console.log(`${ok5 ? 'PASS' : 'FAIL'} GET /api/analyze/report/:id => ${rep.verdict} (${rep.score})`); if (!ok5) fail++;
+    let rep = await res.json();
+    const ok5 = rep.id === j.id && rep.verdict === j.verdict && rep.nl && rep.nl.summary;
+    console.log(`${ok5 ? 'PASS' : 'FAIL'} GET /api/analyze/report/:id => ${rep.verdict} (${rep.score}) nl=${rep.nl ? 'stored' : 'missing'}`); if (!ok5) fail++;
 
     res = await fetch(base + '/v/' + j.id);
     const html = await res.text();
@@ -107,6 +147,64 @@ async function main() {
     const txt = await res.text();
     const ok12 = res.status === 200 && /chase-secure\.co/.test(txt);
     console.log(`${ok12 ? 'PASS' : 'FAIL'} GET /samples/phishing.eml => served`); if (!ok12) fail++;
+
+    // --- Trust API (institutions sign messages) -----------------------------
+    process.env.ADMIN_KEY = 'test-admin-key';
+
+    // Admin key required to register
+    res = await fetch(base + '/api/trust/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Nope Bank' }) });
+    fail += check(`POST /api/trust/register without admin => 401 (${res.status})`, res.status === 401);
+
+    // Register a bank
+    res = await fetch(base + '/api/trust/register', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': 'test-admin-key' }, body: JSON.stringify({ name: 'GTBank', domains: ['gtbank.com'] }) });
+    j = await res.json();
+    const apiKey = j.api_key, secret = j.secret, instId = j.institution && j.institution.id;
+    const okT1 = res.status === 201 && typeof apiKey === 'string' && apiKey.startsWith('dpiq_') && typeof secret === 'string' && secret.length >= 32;
+    console.log(`${okT1 ? 'PASS' : 'FAIL'} POST /api/trust/register => ${instId || 'no id'} (api_key ${okT1 ? 'issued' : 'MISSING'})`); if (!okT1) fail++;
+
+    // Seal a message -> get the link block appended below it
+    res = await fetch(base + '/api/trust/seal', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ channel: 'email', reference: 'stmt-2026-05', subject: 'Your May statement', recipient: 'customer@example.com' }) });
+    j = await res.json();
+    const token = j.token, verifyUrl = j.verify_url;
+    const okT2 = res.status === 200 && typeof token === 'string' && token.includes('.') && j.signature && j.signature.text.includes(verifyUrl) && j.signature.html.includes(verifyUrl) && j.expires_at;
+    console.log(`${okT2 ? 'PASS' : 'FAIL'} POST /api/trust/seal => token + signature block (${okT2 ? 'ok' : JSON.stringify(j).slice(0, 120)})`); if (!okT2) fail++;
+
+    // The appended link resolves on the public /verify/:token path
+    res = await fetch(base + '/verify/' + token);
+    j = await res.json();
+    const okT3 = res.status === 200 && j.valid === true && j.institution && j.institution.name === 'GTBank' && typeof j.message === 'string' && j.message.includes('GTBank');
+    console.log(`${okT3 ? 'PASS' : 'FAIL'} GET /verify/:token => ${j.valid ? 'valid' : j.reason} :: ${(j.message || '').slice(0, 60)}…`); if (!okT3) fail++;
+
+    // Recipient PII must never be embedded — the token rides in a public URL
+    const payloadText = Buffer.from(token.split('.')[0], 'base64url').toString('utf8');
+    const okT4 = /"iid"/.test(payloadText) && !payloadText.includes('customer@example.com') && !payloadText.includes('example.com') && !payloadText.includes('@');
+    console.log(`${okT4 ? 'PASS' : 'FAIL'} seal token payload omits recipient PII => ${payloadText}`); if (!okT4) fail++;
+
+    // A tampered token must fail verification
+    const tampered = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
+    res = await fetch(base + '/api/trust/verify/' + tampered);
+    j = await res.json();
+    const okT5 = j.valid === false && j.reason === 'bad_signature';
+    console.log(`${okT5 ? 'PASS' : 'FAIL'} tampered token => ${j.valid ? 'VALID?!' : j.reason}`); if (!okT5) fail++;
+
+    // Unknown institution id (forged issuer) must fail
+    const forged = Buffer.from(JSON.stringify({ v: 1, iid: 'inst_deadbeef', ch: 'email', ref: null, iat: 1, exp: 9999999999 })).toString('base64url') + '.signature';
+    res = await fetch(base + '/api/trust/verify/' + forged);
+    j = await res.json();
+    const okT6 = j.valid === false && j.reason === 'unknown_institution';
+    console.log(`${okT6 ? 'PASS' : 'FAIL'} forged issuer => ${j.valid ? 'VALID?!' : j.reason}`); if (!okT6) fail++;
+
+    // Wrong API key cannot seal
+    res = await fetch(base + '/api/trust/seal', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': 'dpiq_wrong' }, body: JSON.stringify({ channel: 'sms' }) });
+    fail += check(`POST /api/trust/seal with bad key => 401 (${res.status})`, res.status === 401);
+
+    // Revoked institution stops verifying
+    res = await fetch(base + '/api/trust/institutions/' + instId, { method: 'DELETE', headers: { 'x-admin-key': 'test-admin-key' } });
+    const revoked = await res.json();
+    res = await fetch(base + '/api/trust/verify/' + token);
+    j = await res.json();
+    const okT7 = revoked.ok === true && j.valid === false && j.reason === 'unknown_institution';
+    console.log(`${okT7 ? 'PASS' : 'FAIL'} revoke institution => subsequent verify rejected (${j.reason})`); if (!okT7) fail++;
   } finally { try { srv.closeAllConnections(); } catch {} srv.close(); }
   setTimeout(() => process.exit(fail ? 1 : 0), 100);
 }

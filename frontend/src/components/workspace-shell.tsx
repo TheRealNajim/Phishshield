@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   BarChart3, Bug, FileText, Gauge, LayoutGrid, Users,
-  Home, ChevronRight, Search, Moon, Sun, Menu, User,
+  Home, ChevronRight, Search, Moon, Sun, Menu,
 } from "lucide-react";
 
 import { navigate, useRoute } from "@/lib/route";
@@ -54,9 +54,10 @@ export function WorkspaceShell({
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className={`flex shrink-0 flex-col border-r border-border bg-chrome py-6 transition-all duration-300 ${collapsed ? "w-[68px] px-2" : "w-60 px-4"}`}>
         <div className={`flex items-center gap-2 px-2 text-on-chrome ${collapsed ? "justify-center px-0" : ""}`}>
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[3px] bg-foreground text-background"><User size={18} /></span>
-          {!collapsed && (
-            <span className="text-2xl">DeceptIQ</span>
+          {collapsed ? (
+            <img src="/favicon-2.png" alt="DeceptIQ mark" className="h-8 w-8 shrink-0 rounded-[3px]" />
+          ) : (
+            <img src="/logo.png" alt="DeceptIQ" className="h-8 w-auto" />
           )}
         </div>
         <p className={`mt-10 px-2 text-sm uppercase text-on-chrome-muted ${collapsed ? "invisible" : ""}`}>Overview</p>

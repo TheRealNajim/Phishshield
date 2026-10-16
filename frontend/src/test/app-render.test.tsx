@@ -23,7 +23,7 @@ describe("App", () => {
     stubApi();
     renderApp();
 
-    expect(screen.getByText("DeceptIQ")).toBeInTheDocument();
+    expect(screen.getByAltText("DeceptIQ")).toBeInTheDocument();
     expect(screen.getByText("Threat Trend by Severity")).toBeInTheDocument();
     expect(screen.getByText("Severity Distribution")).toBeInTheDocument();
     expect(await screen.findByText("chase-alert.eml")).toBeInTheDocument();

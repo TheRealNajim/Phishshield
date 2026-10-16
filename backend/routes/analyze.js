@@ -3,9 +3,22 @@ const multer = require('multer');
 const { analyzeBuffer, analyzeDeep } = require('../sandbox/createos-client');
 const history = require('../sandbox/history');
 const teams = require('../sandbox/teams');
+const llm = require('../agent/llm');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+
+// Natural-language verdicts come from Gemini; refuse early (and cheaply) when it
+// is not configured rather than running a sandbox and failing afterwards.
+function requireLlm(req, res, next) {
+  if (!llm.isReady()) {
+    return res.status(503).json({
+      error: 'Natural-language verdict is unavailable: set GEMINI_API_KEY (see .env.example).',
+      code: 'LLM_NOT_CONFIGURED',
+    });
+  }
+  next();
+}
 
 // Free-tier rate limit: 30 scans/hour/IP. Teams bypass via x-teams-key (demo stub for Stripe paywall).
 const hits = new Map();
@@ -24,35 +37,50 @@ function knownDomains() {
   return (process.env.KNOWN_BANK_DOMAINS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
-// POST /api/analyze  (multipart: file) OR (json: {emailText, filename})
-router.post('/', rateLimited, upload.single('file'), async (req, res) => {
-  try {
-    let buffer, filename;
-    if (req.file) { buffer = req.file.buffer; filename = req.file.originalname; }
-    else if (req.body.emailText) { buffer = Buffer.from(req.body.emailText, 'utf8'); filename = req.body.filename || 'email.eml'; }
-    else return res.status(400).json({ error: 'Send multipart `file` or JSON {emailText}' });
+// Shared multipart/file-or-JSON reader. Returns {buffer, filename} or null after
+// already sending a 400.
+function readInput(req, res) {
+  if (req.file) return { buffer: req.file.buffer, filename: req.file.originalname };
+  if (req.body && req.body.emailText) {
+    return { buffer: Buffer.from(req.body.emailText, 'utf8'), filename: req.body.filename || 'email.eml' };
+  }
+  res.status(400).json({ error: 'Send multipart `file` or JSON {emailText}' });
+  return null;
+}
 
-    const result = await analyzeBuffer(buffer, filename, { knownDomains: knownDomains() });
-    const saved = history.append({ filename, verdict: result.verdict, score: result.score, kind: result.kind, reasons: result.reasons, iocs: result.iocs, size: result.size, mode: result.mode, agent_code: result.agent_code });
+// Map errors to status codes: LLM misconfiguration/misbehaviour is not a 500.
+function fail(res, e) {
+  const code = e && e.code;
+  if (code === 'LLM_NOT_CONFIGURED') return res.status(503).json({ error: String(e.message || e), code });
+  if (code === 'LLM_UPSTREAM' || code === 'LLM_BAD_OUTPUT') return res.status(502).json({ error: String(e.message || e), code });
+  return res.status(500).json({ error: String((e && e.message) || e) });
+}
+
+// POST /api/analyze  (multipart: file) OR (json: {emailText, filename})
+router.post('/', requireLlm, rateLimited, upload.single('file'), async (req, res) => {
+  const input = readInput(req, res);
+  if (!input) return;
+  try {
+    const result = await analyzeBuffer(input.buffer, input.filename, { knownDomains: knownDomains() });
+    result.nl = await llm.explain({ ...result, filename: input.filename });
+    const saved = history.append({ filename: input.filename, verdict: result.verdict, score: result.score, kind: result.kind, reasons: result.reasons, iocs: result.iocs, size: result.size, mode: result.mode, agent_code: result.agent_code, nl: result.nl });
     res.json({ ...result, id: saved.id });
   } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
+    fail(res, e);
   }
 });
 
 // POST /api/analyze/deep — two analyzer variants in two parallel sandboxes, compared
-router.post('/deep', rateLimited, upload.single('file'), async (req, res) => {
+router.post('/deep', requireLlm, rateLimited, upload.single('file'), async (req, res) => {
+  const input = readInput(req, res);
+  if (!input) return;
   try {
-    let buffer, filename;
-    if (req.file) { buffer = req.file.buffer; filename = req.file.originalname; }
-    else if (req.body.emailText) { buffer = Buffer.from(req.body.emailText, 'utf8'); filename = req.body.filename || 'email.eml'; }
-    else return res.status(400).json({ error: 'Send multipart `file` or JSON {emailText}' });
-
-    const result = await analyzeDeep(buffer, filename, { knownDomains: knownDomains() });
-    const saved = history.append({ filename, verdict: result.verdict, score: result.score, kind: result.kind, reasons: result.reasons, iocs: result.iocs, size: result.size, mode: result.mode, runs: result.runs, agent_code: result.agent_code, deep: true });
+    const result = await analyzeDeep(input.buffer, input.filename, { knownDomains: knownDomains() });
+    result.nl = await llm.explain({ ...result, filename: input.filename });
+    const saved = history.append({ filename: input.filename, verdict: result.verdict, score: result.score, kind: result.kind, reasons: result.reasons, iocs: result.iocs, size: result.size, mode: result.mode, runs: result.runs, agent_code: result.agent_code, nl: result.nl, deep: true });
     res.json({ ...result, id: saved.id });
   } catch (e) {
-    res.status(500).json({ error: String(e.message || e) });
+    fail(res, e);
   }
 });
 

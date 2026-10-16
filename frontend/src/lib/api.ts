@@ -1,4 +1,4 @@
-// Typed client for the Express API in the repo root (routes/analyze.js, routes/billing.js).
+// Typed client for the Express API in backend/ (routes/analyze.js, routes/billing.js, routes/trust.js).
 // Same-origin by default: Express serves this build, and `npm run dev` proxies /api.
 export type Verdict = "Verified" | "Suspicious" | "Malicious";
 

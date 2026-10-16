@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const analyzeRoute = require('./routes/analyze');
 const billingRoute = require('./routes/billing');
+const trustRoute = require('./routes/trust');
+const llm = require('./agent/llm');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -16,14 +18,18 @@ app.use(express.json({ limit: '2mb' }));
 // Sample .eml files + the public report page live in public/
 app.use(express.static(path.join(__dirname, 'public')));
 
-// The dashboard is a Vite + React app in frontend/ — build it with `npm run build`.
-const FRONTEND_DIST = path.join(__dirname, 'frontend', 'dist');
+// The dashboard is a Vite + React app in ../frontend/ — build it with `npm run build`.
+const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
 const FRONTEND_INDEX = path.join(FRONTEND_DIST, 'index.html');
 app.use(express.static(FRONTEND_DIST));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, mock: process.env.MOCK_SANDBOX !== 'false' }));
+app.get('/api/health', (req, res) => res.json({ ok: true, mock: process.env.MOCK_SANDBOX !== 'false', llm: llm.isConfigured() }));
 app.use('/api/analyze', analyzeRoute);
 app.use('/api/billing', billingRoute);
+app.use('/api/trust', trustRoute.router);
+// The verification link an institution appends resolves here (JSON for now; a
+// branded page lands in the UI phase).
+app.get('/verify/:token', trustRoute.handleVerify);
 // Shareable verdict pages (report.html fetches /api/analyze/report/:id)
 app.get('/v/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'report.html')));
 
